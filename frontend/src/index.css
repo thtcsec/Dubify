@@ -1,0 +1,244 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* LingFilm Design System - Netflix/Disney+ Dark Theme */
+/* All colors in HSL format */
+
+@layer base {
+  :root {
+    /* Dark theme as default for Netflix-style */
+    --background: 0 0% 4%;
+    --foreground: 0 0% 95%;
+
+    --card: 0 0% 8%;
+    --card-foreground: 0 0% 95%;
+
+    --popover: 0 0% 10%;
+    --popover-foreground: 0 0% 95%;
+
+    /* Primary - Netflix Red Accent */
+    --primary: 0 85% 50%;
+    --primary-foreground: 0 0% 100%;
+
+    /* Secondary - Subtle gray */
+    --secondary: 0 0% 15%;
+    --secondary-foreground: 0 0% 90%;
+
+    --muted: 0 0% 12%;
+    --muted-foreground: 0 0% 55%;
+
+    /* Accent - Gold/Premium feel */
+    --accent: 45 90% 55%;
+    --accent-foreground: 0 0% 5%;
+
+    --destructive: 0 84% 60%;
+    --destructive-foreground: 0 0% 100%;
+
+    --border: 0 0% 18%;
+    --input: 0 0% 18%;
+    --ring: 0 85% 50%;
+
+    --radius: 0.75rem;
+
+    /* Custom LingFilm tokens */
+    --gradient-primary: linear-gradient(135deg, hsl(0 85% 50%), hsl(330 85% 50%));
+    --gradient-gold: linear-gradient(135deg, hsl(45 90% 55%), hsl(35 90% 45%));
+    --gradient-dark: linear-gradient(180deg, hsl(0 0% 8%), hsl(0 0% 4%));
+    
+    /* Level colors for language proficiency */
+    --level-a1: 120 60% 45%;
+    --level-a2: 90 60% 45%;
+    --level-b1: 45 80% 50%;
+    --level-b2: 30 80% 50%;
+    --level-c1: 0 70% 50%;
+    --level-c2: 330 70% 50%;
+
+    /* Sidebar */
+    --sidebar-background: 0 0% 6%;
+    --sidebar-foreground: 0 0% 90%;
+    --sidebar-primary: 0 85% 50%;
+    --sidebar-primary-foreground: 0 0% 100%;
+    --sidebar-accent: 0 0% 12%;
+    --sidebar-accent-foreground: 0 0% 90%;
+    --sidebar-border: 0 0% 15%;
+    --sidebar-ring: 0 85% 50%;
+  }
+
+  .dark {
+    --background: 0 0% 4%;
+    --foreground: 0 0% 95%;
+    --card: 0 0% 8%;
+    --card-foreground: 0 0% 95%;
+    --popover: 0 0% 10%;
+    --popover-foreground: 0 0% 95%;
+    --primary: 0 85% 50%;
+    --primary-foreground: 0 0% 100%;
+    --secondary: 0 0% 15%;
+    --secondary-foreground: 0 0% 90%;
+    --muted: 0 0% 12%;
+    --muted-foreground: 0 0% 55%;
+    --accent: 45 90% 55%;
+    --accent-foreground: 0 0% 5%;
+    --destructive: 0 84% 60%;
+    --destructive-foreground: 0 0% 100%;
+    --border: 0 0% 18%;
+    --input: 0 0% 18%;
+    --ring: 0 85% 50%;
+    --sidebar-background: 0 0% 6%;
+    --sidebar-foreground: 0 0% 90%;
+    --sidebar-primary: 0 85% 50%;
+    --sidebar-primary-foreground: 0 0% 100%;
+    --sidebar-accent: 0 0% 12%;
+    --sidebar-accent-foreground: 0 0% 90%;
+    --sidebar-border: 0 0% 15%;
+    --sidebar-ring: 0 85% 50%;
+  }
+}
+
+@layer base {
+  * {
+    @apply border-border;
+  }
+
+  body {
+    @apply bg-background text-foreground antialiased;
+    font-family: 'Inter', system-ui, sans-serif;
+  }
+
+  html {
+    scroll-behavior: smooth;
+  }
+}
+
+@layer components {
+  /* Netflix-style card hover effect */
+  .movie-card {
+    @apply relative overflow-hidden rounded-lg transition-all duration-300 ease-out;
+    @apply hover:scale-105 hover:z-10;
+  }
+
+  .movie-card::after {
+    content: '';
+    @apply absolute inset-0 bg-gradient-to-t from-black/80 via-transparent to-transparent opacity-0 transition-opacity duration-300;
+  }
+
+  .movie-card:hover::after {
+    @apply opacity-100;
+  }
+
+  /* Gradient text */
+  .gradient-text {
+    @apply bg-clip-text text-transparent;
+    background-image: var(--gradient-primary);
+  }
+
+  .gradient-text-gold {
+    @apply bg-clip-text text-transparent;
+    background-image: var(--gradient-gold);
+  }
+
+  /* Glass effect */
+  .glass {
+    @apply bg-white/5 backdrop-blur-md border border-white/10;
+  }
+
+  /* Level badges */
+  .level-a1 { @apply bg-[hsl(var(--level-a1))] text-white; }
+  .level-a2 { @apply bg-[hsl(var(--level-a2))] text-white; }
+  .level-b1 { @apply bg-[hsl(var(--level-b1))] text-black; }
+  .level-b2 { @apply bg-[hsl(var(--level-b2))] text-black; }
+  .level-c1 { @apply bg-[hsl(var(--level-c1))] text-white; }
+  .level-c2 { @apply bg-[hsl(var(--level-c2))] text-white; }
+
+  /* Subtitle styling */
+  .subtitle-primary {
+    @apply text-lg font-medium text-white drop-shadow-lg;
+    text-shadow: 2px 2px 4px rgba(0,0,0,0.8);
+  }
+
+  .subtitle-secondary {
+    @apply text-base text-white/80 drop-shadow-md;
+    text-shadow: 1px 1px 3px rgba(0,0,0,0.8);
+  }
+
+  .subtitle-phonetic {
+    @apply text-sm text-accent italic drop-shadow-md;
+  }
+
+  /* Clickable subtitle word */
+  .subtitle-word {
+    @apply cursor-pointer transition-colors duration-200 hover:text-primary hover:underline;
+  }
+
+  /* Custom scrollbar */
+  .custom-scrollbar::-webkit-scrollbar {
+    width: 6px;
+    height: 6px;
+  }
+
+  .custom-scrollbar::-webkit-scrollbar-track {
+    @apply bg-muted rounded-full;
+  }
+
+  .custom-scrollbar::-webkit-scrollbar-thumb {
+    @apply bg-muted-foreground/30 rounded-full hover:bg-muted-foreground/50;
+  }
+
+  /* Button glow effect */
+  .btn-glow {
+    @apply relative overflow-hidden;
+  }
+
+  .btn-glow::before {
+    content: '';
+    @apply absolute inset-0 bg-gradient-to-r from-transparent via-white/20 to-transparent -translate-x-full;
+    animation: shimmer 2s infinite;
+  }
+
+  @keyframes shimmer {
+    100% {
+      transform: translateX(100%);
+    }
+  }
+}
+
+@layer utilities {
+  /* Animation utilities */
+  .animate-fade-in {
+    animation: fadeIn 0.5s ease-out forwards;
+  }
+
+  .animate-slide-up {
+    animation: slideUp 0.5s ease-out forwards;
+  }
+
+  .animate-scale-in {
+    animation: scaleIn 0.3s ease-out forwards;
+  }
+
+  @keyframes fadeIn {
+    from { opacity: 0; }
+    to { opacity: 1; }
+  }
+
+  @keyframes slideUp {
+    from { opacity: 0; transform: translateY(20px); }
+    to { opacity: 1; transform: translateY(0); }
+  }
+
+  @keyframes scaleIn {
+    from { opacity: 0; transform: scale(0.95); }
+    to { opacity: 1; transform: scale(1); }
+  }
+
+  /* Hide scrollbar but keep functionality */
+  .scrollbar-hide {
+    -ms-overflow-style: none;
+    scrollbar-width: none;
+  }
+
+  .scrollbar-hide::-webkit-scrollbar {
+    display: none;
+  }
+}
