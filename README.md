@@ -1,104 +1,73 @@
-# 🎬 Dubify: AI-Powered Video Translation & Dubbing
+# 🎬 Dubify - Professional AI Video Localization
 
-> Elevate your content globally. Transcribe, translate, and dub videos with professional-grade precision using industry-leading AI models.
+Dubify is a state-of-the-art AI video translation and dubbing platform. It transforms single-language videos into localized versions with perfect timing, using advanced ASR, NMT, and TTS models.
 
-[![Python](https://img.shields.io/badge/Python-3.10+-blue?logo=python&logoColor=white)](https://python.org)
-[![FastAPI](https://img.shields.io/badge/FastAPI-Framework-009688?logo=fastapi&logoColor=white)](https://fastapi.tiangolo.com)
-[![React](https://img.shields.io/badge/React-UI-61DAFB?logo=react&logoColor=black)](https://react.dev)
-[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
-[![Maintainer](https://img.shields.io/badge/Maintainer-thtcsec-red)](https://github.com/thtcsec)
+## 🚀 Ways to Run
 
-## ✨ Overview
+### 1. Manual Execution (Developer Mode)
 
-Dubify is a professional end-to-end pipeline for video localization. By combining state-of-the-art Speech-to-Text (WhisperX), Neural Machine Translation (NLLB/LLM), and high-fidelity TTS engines, Dubify allows creators to bridge language barriers with a single click.
+To run the project manually, you need to start both the backend and frontend services.
 
----
-
-## 🚀 Professional Pipeline
-
-Dubify doesn't just "replace audio"—it reconstructs the viewing experience:
-
-1.  **Audio Extraction (FFmpeg)**: High-fidelity source extraction.
-2.  **Transcription (WhisperX)**: Word-level alignment and speaker diarization.
-3.  **Contextual Translation (NLLB / Ollama)**: Beyond literal translation, preserving tone and intent.
-4.  **Neural Synthesis (Edge TTS / XTTS)**: Natural sounding voices across 100+ languages.
-5.  **Smart Alignment**: Automatic time-stretching and silence insertion to match original visual pacing.
-6.  **Production Merge**: Multi-channel audio mixing with background noise preservation.
-
----
-
-## 📂 Architecture (Standard Skeleton)
-
-```text
-/Dubify
-├── backend/                # FastAPI Application
-│   ├── app/
-│   │   ├── api/            # API Endpoints & Routes
-│   │   ├── core/           # Config, Security, Database
-│   │   ├── services/       # AI Pipeline Logic (ASR, Translate, TTS, Video)
-│   │   └── main.py         # Entry point
-│   ├── workers/            # Background Processors (Celery/Redis)
-│   └── Dockerfile
-├── frontend/               # React (Vite + Tailwind + shadcn/ui)
-│   ├── src/
-│   │   ├── components/     # Reusable UI Blocks
-│   │   ├── hooks/          # Custom processing hooks
-│   │   └── pages/          # Editor & Dashboard
-│   └── package.json
-├── models/                 # Local AI Weights (Whisper, TTS)
-├── storage/                # Media processing storage
-└── docker-compose.yml
-```
-
----
-
-## 🛠️ Tech Stack
-
--   **Backend:** Python 3.11+, FastAPI, FFmpeg.
--   **AI Engines:** WhisperX, NLLB-200, Edge-TTS, Piper, Ollama.
--   **Frontend:** React 18, TypeScript, TailwindCSS, Framer Motion.
--   **Infrastructure:** Docker, Redis (Queue management).
-
----
-
-## 🚦 Quick Start (Development)
-
-### 1. Requirements
-Ensure you have `ffmpeg` installed on your system.
-
-### 2. Backend Setup
+#### **Backend (FastAPI)**
 ```bash
 cd backend
+# Create virtual environment (Optional but Recommended)
 python -m venv venv
-source venv/Scripts/activate  # Or venv/bin/activate
+source venv/bin/activate  # Windows: venv\Scripts\activate
+
+# Install dependencies
 pip install -r requirements.txt
+
+# Start the server
 uvicorn app.main:app --reload
 ```
+*API will be available at `http://localhost:8000`*
 
-### 3. Frontend Setup
+#### **Frontend (React + Vite)**
 ```bash
 cd frontend
+# Install dependencies
 npm install
+
+# Start the development server
 npm run dev
 ```
+*UI will be available at `http://localhost:5173`*
 
 ---
 
-## 📊 Deployment Roadmap
+### 2. Docker Execution (One-Click Setup)
 
--   [ ] **Phase 1**: Core Pipeline Migration (CLI to FastAPI)
--   [ ] **Phase 2**: Interactive Subtitle Editor (React)
--   [ ] **Phase 3**: Real-time Processing Monitoring
--   [ ] **Phase 4**: Production-ready Dockerization
+The easiest way to deploy Dubify is via Docker Compose. This starts both services and manages environment variables and persistence automatically.
+
+```bash
+# Build and start services
+docker compose up --build -d
+
+# Check logs
+docker compose logs -f
+```
+*Frontend: `http://localhost`, Backend API: `http://localhost:8000`*
 
 ---
 
-## 📜 License
+## 🏗️ Project Architecture
 
-MIT License - Copyright (c) 2026 **Trinh Hoang Tu (thtcsec)**.
+- **Backend**: FastAPI modular architecture.
+  - `VideoService`: FFmpeg audio/video processing.
+  - `ASRService`: faster-whisper transcription.
+  - `TranslateService`: NLLB-200 / Google / Ollama integration.
+  - `TTSService`: Edge-TTS with time-stretching.
+- **Frontend**: React 18, TailwindCSS, Shadcn/ui (Migrated from LingFilm).
+- **Core Orchestrator**: `DubbingPipeline` for end-to-end async processing.
 
----
+## 📂 Directory Structure
+- `backend/`: FastAPI source code and logic.
+- `frontend/`: React source code and UI.
+- `storage/`: Input/Output and temporary processing files.
+- `models/`: Weights for local AI models (Whisper, NLLB).
+- `scripts/`: Legacy autodub and reference logic.
 
-<p align="center">
-  Built with ❤️ by <a href="https://github.com/thtcsec">thtcsec</a>
-</p>
+## 🤝 Maintainer
+**Trinh Hoang Tu (thtcsec)**
+© 2026 Dubify AI
