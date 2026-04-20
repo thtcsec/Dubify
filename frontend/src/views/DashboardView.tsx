@@ -15,6 +15,7 @@ interface DashboardViewProps {
   videoUrl: string;
   setVideoUrl: (url: string) => void;
   videoInfo: any;
+  fetchError: string | null;
   handleFetchInfo: () => void;
   handleStartDubbing: () => void;
   resetProject: () => void;
@@ -31,6 +32,7 @@ export function DashboardView({
   videoUrl,
   setVideoUrl,
   videoInfo,
+  fetchError,
   handleFetchInfo,
   handleStartDubbing,
   resetProject
@@ -47,7 +49,25 @@ export function DashboardView({
       <main>
         <AnimatePresence mode="wait">
           {!jobId ? (
-            <motion.div key="creation" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}>
+            <motion.div key="creation" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="space-y-6">
+              
+              {fetchError && (
+                <div className="bg-red-500/10 border border-red-500/20 rounded-lg p-4 flex items-center justify-between">
+                   <div className="flex items-center gap-3">
+                      <div className="p-2 bg-red-500/20 rounded-full text-red-400">
+                         <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"></path></svg>
+                      </div>
+                      <div>
+                         <h4 className="text-red-400 font-semibold text-sm">Connection Error</h4>
+                         <p className="text-red-400/80 text-xs">{fetchError}</p>
+                      </div>
+                   </div>
+                   <Button variant="outline" size="sm" onClick={videoUrl ? handleFetchInfo : handleStartDubbing} className="border-red-500/20 text-red-400 hover:bg-red-500/10">
+                      Retry
+                   </Button>
+                </div>
+              )}
+
               <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
                 <div className="lg:col-span-8">
                   <VideoSourceSection 

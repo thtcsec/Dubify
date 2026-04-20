@@ -25,17 +25,23 @@ export default function App() {
   const [file, setFile] = useState<File | null>(null);
   const [videoUrl, setVideoUrl] = useState('');
   const [videoInfo, setVideoInfo] = useState<any>(null);
+  const [fetchError, setFetchError] = useState<string | null>(null);
 
   const handleFetchInfo = async () => {
     if (!videoUrl) return;
     setIsLoading(true);
+    setFetchError(null);
     const formData = new FormData();
     formData.append('url', videoUrl);
     try {
       const response = await api.post('/fetch-info', formData);
       setVideoInfo(response.data);
-    } catch (err) {
-      alert('Failed to fetch info. Ensure the URL is public.');
+    } catch (err: any) {
+      if (err.code === 'ECONNABORTED' || err.message.includes('timeout')) {
+        setFetchError('Request timed out. The server took too long to respond.');
+      } else {
+        setFetchError('Failed to fetch info. Ensure the URL is public and valid.');
+      }
     } finally {
       setIsLoading(false);
     }
@@ -43,6 +49,7 @@ export default function App() {
 
   const handleStartDubbing = async () => {
     setIsLoading(true);
+    setFetchError(null);
     const formData = new FormData();
     formData.append('target_lang', targetLang);
     try {
@@ -55,8 +62,12 @@ export default function App() {
         response = await api.post('/dub-url', formData);
       }
       setJobId(response.data.job_id);
-    } catch (err) {
-      alert('Failed to start dubbing project.');
+    } catch (err: any) {
+      if (err.code === 'ECONNABORTED' || err.message.includes('timeout')) {
+         setFetchError('Project creation timed out, but the worker might still be processing it.');
+      } else {
+         setFetchError('Failed to start dubbing project.');
+      }
     } finally {
       setIsLoading(false);
     }
@@ -67,6 +78,7 @@ export default function App() {
     setFile(null);
     setVideoUrl('');
     setVideoInfo(null);
+    setFetchError(null);
   };
 
   const renderView = () => {
@@ -84,6 +96,7 @@ export default function App() {
             videoUrl={videoUrl}
             setVideoUrl={setVideoUrl}
             videoInfo={videoInfo}
+            fetchError={fetchError}
             handleFetchInfo={handleFetchInfo}
             handleStartDubbing={handleStartDubbing}
             resetProject={resetProject}
