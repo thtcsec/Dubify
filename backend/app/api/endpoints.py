@@ -1,4 +1,6 @@
 from fastapi import APIRouter, UploadFile, File, BackgroundTasks, HTTPException, Form
+from typing import Optional
+from pydantic import BaseModel
 from pathlib import Path
 import shutil
 import os
