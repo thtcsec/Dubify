@@ -78,7 +78,7 @@ class VideoService:
     def merge_audio_video(video_path: Path, audio_path: Path, output_path: Path, srt_path: Optional[Path] = None) -> bool:
         """Replace original audio with new audio track and optionally burn subtitles."""
         try:
-            logger.info(f"Merging {"audio and subtitles" if srt_path else "audio"} into {video_path}")
+            logger.info(f"Merging {'audio and subtitles' if srt_path else 'audio'} into {video_path}")
             if srt_path and srt_path.exists():
                 # FFMPEG requires severe escaping for Windows paths inside filters
                 escaped_srt = str(srt_path).replace("\\", "\\\\").replace("'", "\\'")
