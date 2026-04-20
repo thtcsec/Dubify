@@ -1,70 +1,54 @@
-import * as React from "react"
 import {
   LayoutDashboard,
   Layers,
   Clock,
   Settings,
   HelpCircle,
-} from "lucide-react"
+  PanelLeftClose,
+  PanelLeftOpen
+} from "lucide-react";
+import { Button } from "@/components/ui/button";
 
-import {
-  Sidebar,
-  SidebarContent,
-  SidebarFooter,
-  SidebarGroup,
-  SidebarGroupContent,
-  SidebarGroupLabel,
-  SidebarHeader,
-  SidebarMenu,
-  SidebarMenuButton,
-  SidebarMenuItem,
-  SidebarRail,
-} from "@/components/ui/sidebar"
+const NAV_MAIN = [
+  { id: "dashboard", title: "Dashboard", icon: LayoutDashboard },
+  { id: "projects", title: "Projects", icon: Layers },
+  { id: "history", title: "History", icon: Clock },
+];
 
-const data = {
-  navMain: [
-    {
-      id: "dashboard",
-      title: "Dashboard",
-      icon: LayoutDashboard,
-    },
-    {
-      id: "projects",
-      title: "Projects",
-      icon: Layers,
-    },
-    {
-      id: "history",
-      title: "History",
-      icon: Clock,
-    },
-  ],
-  navSecondary: [
-    {
-      id: "settings",
-      title: "Settings",
-      icon: Settings,
-    },
-    {
-      id: "help",
-      title: "Help",
-      icon: HelpCircle,
-    },
-  ],
-}
+const NAV_SECONDARY = [
+  { id: "settings", title: "Settings", icon: Settings },
+  { id: "help", title: "Help", icon: HelpCircle },
+];
 
-interface AppSidebarProps extends React.ComponentProps<typeof Sidebar> {
+interface AppSidebarProps {
   currentView: string;
   onViewChange: (view: string) => void;
+  isCollapsed: boolean;
+  onToggleCollapse: () => void;
 }
 
-export function AppSidebar({ currentView, onViewChange, ...props }: AppSidebarProps) {
+export function AppSidebar({ currentView, onViewChange, isCollapsed, onToggleCollapse }: AppSidebarProps) {
   return (
-    <Sidebar collapsible="icon" {...props}>
-      <SidebarHeader className="h-16 border-b border-sidebar-border/50">
-        <SidebarMenu>
-          <SidebarMenuItem>
-            <SidebarMenuButton size="lg" className="hover:bg-transparent" onClick={() => onViewChange("dashboard")}>
+    <aside
+      className={`border-r border-white/10 bg-[#02030a] transition-[width] duration-300 ${
+        isCollapsed ? 'w-16' : 'w-64'
+      }`}
+    >
+      <div className="flex h-full flex-col p-2">
+        {/* Toggle Button */}
+        <Button
+          variant="ghost"
+          size="icon"
+          onClick={onToggleCollapse}
+          className="mb-6 h-9 w-9 self-end text-white/70 hover:bg-white/10 hover:text-white"
+          title={isCollapsed ? 'Expand sidebar' : 'Collapse sidebar'}
+        >
+          {isCollapsed ? <PanelLeftOpen className="h-4 w-4" /> : <PanelLeftClose className="h-4 w-4" />}
+        </Button>
+
+        {/* Brand */}
+        {!isCollapsed && (
+           <div className="mb-6 px-3 flex items-center gap-3">
               <div className="flex aspect-square size-8 items-center justify-center rounded-lg bg-primary text-primary-foreground">
                 <span className="font-bold">D</span>
               </div>
@@ -72,46 +56,53 @@ export function AppSidebar({ currentView, onViewChange, ...props }: AppSidebarPr
                 <span className="font-bold text-lg">DUBIFY</span>
                 <span className="text-xs text-muted-foreground">AI Translator</span>
               </div>
-            </SidebarMenuButton>
-          </SidebarMenuItem>
-        </SidebarMenu>
-      </SidebarHeader>
-      <SidebarContent>
-        <SidebarGroup>
-          <SidebarGroupLabel>Application</SidebarGroupLabel>
-          <SidebarMenu>
-            {data.navMain.map((item) => (
-              <SidebarMenuItem key={item.id}>
-                <SidebarMenuButton 
-                  tooltip={item.title} 
-                  isActive={currentView === item.id}
-                  onClick={() => onViewChange(item.id)}
-                >
-                  {item.icon && <item.icon />}
-                  <span>{item.title}</span>
-                </SidebarMenuButton>
-              </SidebarMenuItem>
-            ))}
-          </SidebarMenu>
-        </SidebarGroup>
-      </SidebarContent>
-      <SidebarFooter className="border-t border-sidebar-border/50 p-4">
-        <SidebarMenu>
-            {data.navSecondary.map((item) => (
-              <SidebarMenuItem key={item.id}>
-                <SidebarMenuButton 
-                  size="sm" 
-                  isActive={currentView === item.id}
-                  onClick={() => onViewChange(item.id)}
-                >
-                  <item.icon />
-                  <span>{item.title}</span>
-                </SidebarMenuButton>
-              </SidebarMenuItem>
-            ))}
-        </SidebarMenu>
-      </SidebarFooter>
-      <SidebarRail />
-    </Sidebar>
-  )
+           </div>
+        )}
+
+        {/* Main Navigation */}
+        <div className="flex-1 space-y-1">
+          {NAV_MAIN.map((item) => {
+            const Icon = item.icon;
+            return (
+              <Button
+                key={item.id}
+                variant="ghost"
+                onClick={() => onViewChange(item.id)}
+                className={`h-10 w-full justify-start gap-3 rounded-lg border ${
+                  currentView === item.id
+                    ? 'border-white/20 bg-white/10 text-white'
+                    : 'border-transparent text-white/70 hover:bg-white/10 hover:text-white'
+                } ${isCollapsed ? 'px-2' : 'px-3'}`}
+              >
+                <Icon className="h-4 w-4 shrink-0" />
+                {!isCollapsed && <span>{item.title}</span>}
+              </Button>
+            );
+          })}
+        </div>
+
+        {/* Secondary Navigation */}
+        <div className="pt-4 border-t border-white/10 space-y-1">
+          {NAV_SECONDARY.map((item) => {
+            const Icon = item.icon;
+            return (
+              <Button
+                key={item.id}
+                variant="ghost"
+                onClick={() => onViewChange(item.id)}
+                className={`h-10 w-full justify-start gap-3 rounded-lg border ${
+                  currentView === item.id
+                    ? 'border-white/20 bg-white/10 text-white'
+                    : 'border-transparent text-white/70 hover:bg-white/10 hover:text-white'
+                } ${isCollapsed ? 'px-2' : 'px-3'}`}
+              >
+                <Icon className="h-4 w-4 shrink-0" />
+                {!isCollapsed && <span>{item.title}</span>}
+              </Button>
+            );
+          })}
+        </div>
+      </div>
+    </aside>
+  );
 }

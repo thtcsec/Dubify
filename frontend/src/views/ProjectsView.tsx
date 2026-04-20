@@ -10,32 +10,22 @@ export function ProjectsView() {
   const [isLoading, setIsLoading] = useState(true);
 
   useEffect(() => {
+    let mounted = true;
     const fetchProjects = async () => {
       try {
         const response = await api.get('/projects');
-        // Convert map to array and sort by latest
         const projectList = Object.entries(response.data).map(([id, data]: [string, any]) => ({
           id,
           ...data
         })).reverse();
-        setProjects(projectList);
+        if (mounted) setProjects(projectList);
       } catch (err) {
         console.error('Failed to fetch projects');
-      } finally {
-        setIsLoading(false);
       }
     };
     fetchProjects();
+    return () => { mounted = false; };
   }, []);
-
-  if (isLoading) {
-    return (
-      <div className="flex flex-col items-center justify-center p-20 text-slate-500">
-        <Loader2 className="w-8 h-8 animate-spin mb-4" />
-        <p>Loading your projects...</p>
-      </div>
-    );
-  }
 
   return (
     <div className="space-y-6">

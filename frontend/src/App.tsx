@@ -1,6 +1,5 @@
 import { useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { SidebarProvider, SidebarInset } from '@/components/ui/sidebar';
 import { AppSidebar } from './components/AppSidebar';
 import { DashboardHeader } from './components/dashboard/Header';
 
@@ -13,8 +12,11 @@ import { HelpView } from './views/HelpView';
 import api from './lib/api';
 
 export default function App() {
-  // Global State
+  // Navigation State
   const [currentView, setCurrentView] = useState('dashboard');
+  const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(false);
+
+  // Global State
   const [targetLang, setTargetLang] = useState('vi');
   const [jobId, setJobId] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(false);
@@ -101,25 +103,32 @@ export default function App() {
   };
 
   return (
-    <SidebarProvider defaultOpen>
-      <AppSidebar currentView={currentView} onViewChange={setCurrentView} />
-      <SidebarInset className="bg-slate-950 flex-1 min-w-0 transition-all duration-200 ease-linear overflow-hidden">
+    <div className="flex h-screen w-full bg-slate-950 overflow-hidden text-white">
+      <AppSidebar 
+        currentView={currentView} 
+        onViewChange={setCurrentView} 
+        isCollapsed={isSidebarCollapsed}
+        onToggleCollapse={() => setIsSidebarCollapsed(!isSidebarCollapsed)}
+      />
+      
+      <div className="flex-1 min-w-0 flex flex-col h-full bg-slate-950">
         <DashboardHeader currentView={currentView} />
 
-        <div className="p-8 w-full min-h-[calc(100vh-4rem)]">
+        <main className="flex-1 min-w-0 overflow-y-auto p-6 md:p-8">
           <AnimatePresence mode="wait">
             <motion.div
               key={currentView}
-              initial={{ opacity: 0, x: -10 }}
-              animate={{ opacity: 1, x: 0 }}
-              exit={{ opacity: 0, x: 10 }}
+              initial={{ opacity: 0, scale: 0.98 }}
+              animate={{ opacity: 1, scale: 1 }}
+              exit={{ opacity: 0, scale: 1.02 }}
               transition={{ duration: 0.2 }}
+              className="max-w-7xl mx-auto h-full"
             >
               {renderView()}
             </motion.div>
           </AnimatePresence>
-        </div>
-      </SidebarInset>
-    </SidebarProvider>
+        </main>
+      </div>
+    </div>
   );
 }

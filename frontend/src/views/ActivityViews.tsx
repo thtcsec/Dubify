@@ -53,27 +53,18 @@ export function SettingsView() {
   const [showAnthropic, setShowAnthropic] = useState(false);
 
   useEffect(() => {
+    let mounted = true;
     const fetchConfig = async () => {
       try {
         const response = await api.get('/settings');
-        setConfig(response.data);
+        if (mounted) setConfig(response.data);
       } catch (err) {
         console.error('Failed to fetch config');
-      } finally {
-        setIsLoading(false);
       }
     };
     fetchConfig();
+    return () => { mounted = false; };
   }, []);
-
-  if (isLoading) {
-    return (
-      <div className="flex flex-col items-center justify-center p-20 text-slate-500">
-        <Loader2 className="w-8 h-8 animate-spin mb-4" />
-        <p>Loading configuration...</p>
-      </div>
-    );
-  }
 
   return (
     <div className="space-y-6">
