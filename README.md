@@ -95,7 +95,7 @@ npm run dev
 
 ## 📜 License
 
-MIT License - Copyright (c) 2024 **Trinh Hoang Tu (thtcsec)**.
+MIT License - Copyright (c) 2026 **Trinh Hoang Tu (thtcsec)**.
 
 ---
 
