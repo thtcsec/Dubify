@@ -1,97 +1,56 @@
 @import "tailwindcss";
 
 /* LingFilm Design System - Netflix/Disney+ Dark Theme */
-/* All colors in HSL format */
+/* Tailwind V4 @theme configuration */
+@theme {
+  --color-background: hsl(0 0% 4%);
+  --color-foreground: hsl(0 0% 95%);
 
-@layer base {
-  :root {
-    /* Dark theme as default for Netflix-style */
-    --background: 0 0% 4%;
-    --foreground: 0 0% 95%;
+  --color-card: hsl(0 0% 8%);
+  --color-card-foreground: hsl(0 0% 95%);
 
-    --card: 0 0% 8%;
-    --card-foreground: 0 0% 95%;
+  --color-popover: hsl(0 0% 10%);
+  --color-popover-foreground: hsl(0 0% 95%);
 
-    --popover: 0 0% 10%;
-    --popover-foreground: 0 0% 95%;
+  --color-primary: hsl(0 85% 50%);
+  --color-primary-foreground: hsl(0 0% 100%);
 
-    /* Primary - Netflix Red Accent */
-    --primary: 0 85% 50%;
-    --primary-foreground: 0 0% 100%;
+  --color-secondary: hsl(0 0% 15%);
+  --color-secondary-foreground: hsl(0 0% 90%);
 
-    /* Secondary - Subtle gray */
-    --secondary: 0 0% 15%;
-    --secondary-foreground: 0 0% 90%;
+  --color-muted: hsl(0 0% 12%);
+  --color-muted-foreground: hsl(0 0% 55%);
 
-    --muted: 0 0% 12%;
-    --muted-foreground: 0 0% 55%;
+  --color-accent: hsl(45 90% 55%);
+  --color-accent-foreground: hsl(0 0% 5%);
 
-    /* Accent - Gold/Premium feel */
-    --accent: 45 90% 55%;
-    --accent-foreground: 0 0% 5%;
+  --color-destructive: hsl(0 84% 60%);
+  --color-destructive-foreground: hsl(0 0% 100%);
 
-    --destructive: 0 84% 60%;
-    --destructive-foreground: 0 0% 100%;
+  --color-border: hsl(0 0% 18%);
+  --color-input: hsl(0 0% 18%);
+  --color-ring: hsl(0 85% 50%);
 
-    --border: 0 0% 18%;
-    --input: 0 0% 18%;
-    --ring: 0 85% 50%;
+  --radius-lg: 0.75rem;
+  --radius-md: calc(0.75rem - 2px);
+  --radius-sm: calc(0.75rem - 4px);
 
-    --radius: 0.75rem;
+  --color-level-a1: hsl(120 60% 45%);
+  --color-level-a2: hsl(90 60% 45%);
+  --color-level-b1: hsl(45 80% 50%);
+  --color-level-b2: hsl(30 80% 50%);
+  --color-level-c1: hsl(0 70% 50%);
+  --color-level-c2: hsl(330 70% 50%);
 
-    /* Custom LingFilm tokens */
-    --gradient-primary: linear-gradient(135deg, hsl(0 85% 50%), hsl(330 85% 50%));
-    --gradient-gold: linear-gradient(135deg, hsl(45 90% 55%), hsl(35 90% 45%));
-    --gradient-dark: linear-gradient(180deg, hsl(0 0% 8%), hsl(0 0% 4%));
-    
-    /* Level colors for language proficiency */
-    --level-a1: 120 60% 45%;
-    --level-a2: 90 60% 45%;
-    --level-b1: 45 80% 50%;
-    --level-b2: 30 80% 50%;
-    --level-c1: 0 70% 50%;
-    --level-c2: 330 70% 50%;
-
-    /* Sidebar */
-    --sidebar-background: 0 0% 6%;
-    --sidebar-foreground: 0 0% 90%;
-    --sidebar-primary: 0 85% 50%;
-    --sidebar-primary-foreground: 0 0% 100%;
-    --sidebar-accent: 0 0% 12%;
-    --sidebar-accent-foreground: 0 0% 90%;
-    --sidebar-border: 0 0% 15%;
-    --sidebar-ring: 0 85% 50%;
-  }
-
-  .dark {
-    --background: 0 0% 4%;
-    --foreground: 0 0% 95%;
-    --card: 0 0% 8%;
-    --card-foreground: 0 0% 95%;
-    --popover: 0 0% 10%;
-    --popover-foreground: 0 0% 95%;
-    --primary: 0 85% 50%;
-    --primary-foreground: 0 0% 100%;
-    --secondary: 0 0% 15%;
-    --secondary-foreground: 0 0% 90%;
-    --muted: 0 0% 12%;
-    --muted-foreground: 0 0% 55%;
-    --accent: 45 90% 55%;
-    --accent-foreground: 0 0% 5%;
-    --destructive: 0 84% 60%;
-    --destructive-foreground: 0 0% 100%;
-    --border: 0 0% 18%;
-    --input: 0 0% 18%;
-    --ring: 0 85% 50%;
-    --sidebar-background: 0 0% 6%;
-    --sidebar-foreground: 0 0% 90%;
-    --sidebar-primary: 0 85% 50%;
-    --sidebar-primary-foreground: 0 0% 100%;
-    --sidebar-accent: 0 0% 12%;
-    --sidebar-accent-foreground: 0 0% 90%;
-    --sidebar-border: 0 0% 15%;
-    --sidebar-ring: 0 85% 50%;
-  }
+  /* Sidebar fallback variables */
+  --color-sidebar-background: hsl(0 0% 6%);
+  --color-sidebar-foreground: hsl(0 0% 90%);
+  --color-sidebar-primary: hsl(0 85% 50%);
+  --color-sidebar-primary-foreground: hsl(0 0% 100%);
+  --color-sidebar-accent: hsl(0 0% 12%);
+  --color-sidebar-accent-foreground: hsl(0 0% 90%);
+  --color-sidebar-border: hsl(0 0% 15%);
+  --color-sidebar-ring: hsl(0 85% 50%);
 }
 
 @layer base {
@@ -128,12 +87,12 @@
   /* Gradient text */
   .gradient-text {
     @apply bg-clip-text text-transparent;
-    background-image: var(--gradient-primary);
+    background-image: linear-gradient(135deg, hsl(0 85% 50%), hsl(330 85% 50%));
   }
 
   .gradient-text-gold {
     @apply bg-clip-text text-transparent;
-    background-image: var(--gradient-gold);
+    background-image: linear-gradient(135deg, hsl(45 90% 55%), hsl(35 90% 45%));
   }
 
   /* Glass effect */
@@ -141,13 +100,13 @@
     @apply bg-white/5 backdrop-blur-md border border-white/10;
   }
 
-  /* Level badges */
-  .level-a1 { @apply bg-[hsl(var(--level-a1))] text-white; }
-  .level-a2 { @apply bg-[hsl(var(--level-a2))] text-white; }
-  .level-b1 { @apply bg-[hsl(var(--level-b1))] text-black; }
-  .level-b2 { @apply bg-[hsl(var(--level-b2))] text-black; }
-  .level-c1 { @apply bg-[hsl(var(--level-c1))] text-white; }
-  .level-c2 { @apply bg-[hsl(var(--level-c2))] text-white; }
+  /* Level badges using theme colors */
+  .level-a1 { @apply bg-level-a1 text-white; }
+  .level-a2 { @apply bg-level-a2 text-white; }
+  .level-b1 { @apply bg-level-b1 text-black; }
+  .level-b2 { @apply bg-level-b2 text-black; }
+  .level-c1 { @apply bg-level-c1 text-white; }
+  .level-c2 { @apply bg-level-c2 text-white; }
 
   /* Subtitle styling */
   .subtitle-primary {
