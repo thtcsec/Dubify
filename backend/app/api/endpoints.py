@@ -78,9 +78,8 @@ async def get_settings():
         "models_dir": str(settings.MODELS_DIR),
         "whisper_model": settings.DEFAULT_WHISPER_MODEL,
         "nllb_model": settings.DEFAULT_NLLB_MODEL,
-        # Mocking API keys for display (will be masked in frontend)
-        "openai_api_key": os.getenv("OPENAI_API_KEY", ""),
-        "anthropic_api_key": os.getenv("ANTHROPIC_API_KEY", ""),
+        "openai_api_key": settings.OPENAI_API_KEY,
+        "anthropic_api_key": settings.ANTHROPIC_API_KEY,
     }
 
 @router.post("/dub-url")

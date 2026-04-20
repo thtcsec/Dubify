@@ -48,7 +48,7 @@ export function DashboardView({
         <AnimatePresence mode="wait">
           {!jobId ? (
             <motion.div key="creation" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}>
-              <div className="grid grid-cols-1 lg:grid-cols-12 gap-8">
+              <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
                 <div className="lg:col-span-8">
                   <VideoSourceSection 
                     file={file} 

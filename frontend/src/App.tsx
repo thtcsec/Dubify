@@ -103,10 +103,10 @@ export default function App() {
   return (
     <SidebarProvider defaultOpen>
       <AppSidebar currentView={currentView} onViewChange={setCurrentView} />
-      <SidebarInset className="bg-slate-950 transition-[margin,width] duration-200 ease-linear peer-data-[state=collapsed]:ml-[--sidebar-width-icon] peer-data-[state=expanded]:ml-[--sidebar-width]">
+      <SidebarInset className="bg-slate-950 flex-1 min-w-0 transition-all duration-200 ease-linear overflow-hidden">
         <DashboardHeader currentView={currentView} />
 
-        <div className="p-8 w-full min-h-[calc(100vh-4rem)] lg:px-12">
+        <div className="p-8 w-full min-h-[calc(100vh-4rem)]">
           <AnimatePresence mode="wait">
             <motion.div
               key={currentView}

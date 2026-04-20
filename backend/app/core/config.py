@@ -20,14 +20,21 @@ class Settings(BaseSettings):
     DEFAULT_WHISPER_MODEL: str = "base"
     DEFAULT_NLLB_MODEL: str = "facebook/nllb-200-distilled-600M"
     
+    # API Keys (Loaded from .env)
+    OPENAI_API_KEY: str = ""
+    ANTHROPIC_API_KEY: str = ""
+    
     class Config:
         case_sensitive = True
         env_file = str(Path(__file__).resolve().parent.parent.parent.parent / ".env")
 
     def create_directories(self):
         """Ensure all required directories exist."""
-        for path in [self.STORAGE_DIR, self.MODELS_DIR, self.INPUT_DIR, self.TEMP_DIR, self.OUTPUT_DIR]:
-            path.mkdir(parents=True, exist_ok=True)
+        try:
+            for path in [self.STORAGE_DIR, self.MODELS_DIR, self.INPUT_DIR, self.TEMP_DIR, self.OUTPUT_DIR]:
+                path.mkdir(parents=True, exist_ok=True)
+        except Exception as e:
+            print(f"Warning: Could not create directories: {e}")
 
 settings = Settings()
 settings.create_directories()
