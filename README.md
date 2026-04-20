@@ -2,7 +2,16 @@
 
 Dubify is a state-of-the-art AI video translation and dubbing platform. It transforms single-language videos into localized versions with perfect timing, using advanced ASR, NMT, and TTS models.
 
-## 🚀 Ways to Run
+## 🚀 Quick Start (Automated)
+
+If you are on Windows, you can start both the backend and frontend with a single command:
+
+- **CMD**: Double-click `run_dev.bat`
+- **PowerShell**: Run `./run_dev.ps1`
+
+---
+
+## 🏗️ Manual Execution (Developer Mode)
 
 ### 1. Manual Execution (Developer Mode)
 
@@ -27,10 +36,10 @@ uvicorn app.main:app --reload
 ```bash
 cd frontend
 # Install dependencies
-npm install
+pnpm install
 
 # Start the development server
-npm run dev
+pnpm dev
 ```
 *UI will be available at `http://localhost:5173`*
 
