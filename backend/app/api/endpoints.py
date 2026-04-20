@@ -117,12 +117,7 @@ async def dub_url(
     job_id = f"url_{os.urandom(4).hex()}"
     job_manager.add_job(job_id, {"status": "pending", "url": url, "target_lang": target_lang})
     
-    async def process_flow():
-        try:
-            job_manager.update_job(job_id, {"status": "downloading"})
-            local_path = url_service.download_video(url)
-            
-    # Delegate to worker
+    # Delegate to worker (worker automatically detects http strings and triggers URLService)
     worker.add_job(job_id, {
         "source_path": url,
         "target_lang": target_lang
