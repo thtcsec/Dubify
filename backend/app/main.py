@@ -1,5 +1,6 @@
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.staticfiles import StaticFiles
 from app.core.config import settings
 from app.api.endpoints import router as api_router
 
@@ -19,6 +20,9 @@ app.add_middleware(
 
 # Include API Router
 app.include_router(api_router, prefix=settings.API_V1_STR)
+
+# Mount Storage for public access (optional, but needed for current frontend logic)
+app.mount("/storage", StaticFiles(directory=str(settings.STORAGE_DIR)), name="storage")
 
 @app.get("/")
 def root():

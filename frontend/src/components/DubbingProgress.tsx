@@ -73,7 +73,10 @@ export const DubbingProgress = ({ jobId, onComplete, onError }: DubbingProgressP
         </div>
 
         {isCompleted && (
-           <Button className="w-full mt-4" onClick={() => window.open(`http://localhost:8000/storage/output/${Path.basename(data.output_path)}`)}>
+           <Button className="w-full mt-4" onClick={() => {
+              const filename = data.output_path.split(/[\\/]/).pop();
+              window.open(`http://localhost:8000/storage/output/${filename}`);
+           }}>
               <Download className="w-4 h-4 mr-2" /> Download Result
            </Button>
         )}

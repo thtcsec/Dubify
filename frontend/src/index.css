@@ -1,6 +1,4 @@
-@tailwind base;
-@tailwind components;
-@tailwind utilities;
+@import "tailwindcss";
 
 /* LingFilm Design System - Netflix/Disney+ Dark Theme */
 /* All colors in HSL format */

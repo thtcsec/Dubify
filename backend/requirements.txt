@@ -4,15 +4,15 @@ pydantic-settings==2.2.1
 python-multipart==0.0.9
 aiofiles==23.2.1
 
-# AI & Processing
-faster-whisper==1.0.1
+# AI & Processing (Loosened versions for WhisperX compatibility)
+faster-whisper>=1.0.1
 whisperx @ git+https://github.com/m-bain/whisperX.git
-transformers==4.38.2
-sentencepiece==0.2.0
-edge-tts==6.1.10
-ffmpeg-python==0.2.0
-moviepy==1.0.3
-deep-translator==1.11.4
+transformers>=4.48.0
+sentencepiece
+edge-tts>=6.1.0
+ffmpeg-python
+moviepy
+deep-translator
 torch
 torchaudio
 soundfile
