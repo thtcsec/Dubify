@@ -8,9 +8,20 @@ class URLService:
     def __init__(self):
         self.download_path = settings.INPUT_DIR
 
+    def _normalize_url(self, url: str) -> str:
+        """Normalize complex share links into standalone paths supported by yt-dlp."""
+        # Handle Douyin modal_id share links
+        if "douyin.com" in url and "modal_id=" in url:
+            match = re.search(r"modal_id=(\d+)", url)
+            if match:
+                return f"https://www.douyin.com/video/{match.group(1)}"
+        return url
+
     def get_info(self, url: str) -> Dict[str, Any]:
         """Fetch video metadata without downloading."""
         try:
+            url = self._normalize_url(url)
+            
             # Handle Google Drive separately if needed
             if "drive.google.com" in url:
                 file_id = self._extract_gdrive_id(url)
@@ -28,6 +39,12 @@ class URLService:
                 'quiet': True,
                 'no_warnings': True,
                 'format': 'best',
+                'http_headers': {
+                    'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+                    'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
+                    'Accept-Language': 'en-US,en;q=0.5',
+                    'Sec-Fetch-Mode': 'navigate',
+                }
             }
             with yt_dlp.YoutubeDL(ydl_opts) as ydl:
                 info = ydl.extract_info(url, download=False)
@@ -44,6 +61,8 @@ class URLService:
     def download_video(self, url: str) -> str:
         """Download video and return local path."""
         try:
+            url = self._normalize_url(url)
+            
             if "drive.google.com" in url:
                 return self._download_from_gdrive(url)
 
@@ -52,6 +71,11 @@ class URLService:
                 'format': 'bestvideo[ext=mp4]+bestaudio[ext=m4a]/best[ext=mp4]/best',
                 'outtmpl': output_template,
                 'quiet': True,
+                'http_headers': {
+                    'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+                    'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
+                    'Accept-Language': 'en-US,en;q=0.5',
+                }
             }
             with yt_dlp.YoutubeDL(ydl_opts) as ydl:
                 info = ydl.extract_info(url, download=True)
