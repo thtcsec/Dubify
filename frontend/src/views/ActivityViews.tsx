@@ -48,16 +48,25 @@ export function HistoryView() {
 
 export function SettingsView() {
   const [config, setConfig] = useState<any>(null);
-  const [isLoading, setIsLoading] = useState(true);
   const [showOpenAI, setShowOpenAI] = useState(false);
   const [showAnthropic, setShowAnthropic] = useState(false);
+  const [isEditing, setIsEditing] = useState(false);
+  const [isSaving, setIsSaving] = useState(false);
+
+  // Local state for editing form
+  const [openaiKey, setOpenaiKey] = useState("");
+  const [anthropicKey, setAnthropicKey] = useState("");
 
   useEffect(() => {
     let mounted = true;
     const fetchConfig = async () => {
       try {
         const response = await api.get('/settings');
-        if (mounted) setConfig(response.data);
+        if (mounted) {
+          setConfig(response.data);
+          setOpenaiKey(response.data.openai_api_key || "");
+          setAnthropicKey(response.data.anthropic_api_key || "");
+        }
       } catch (err) {
         console.error('Failed to fetch config');
       }
@@ -65,6 +74,22 @@ export function SettingsView() {
     fetchConfig();
     return () => { mounted = false; };
   }, []);
+
+  const handleSave = async () => {
+    setIsSaving(true);
+    try {
+      await api.post('/settings', {
+        openai_api_key: openaiKey,
+        anthropic_api_key: anthropicKey
+      });
+      setConfig({ ...config, openai_api_key: openaiKey, anthropic_api_key: anthropicKey });
+      setIsEditing(false);
+    } catch (err) {
+        alert("Failed to save configuration to .env");
+    } finally {
+        setIsSaving(false);
+    }
+  };
 
   return (
     <div className="space-y-6">
@@ -120,11 +145,23 @@ export function SettingsView() {
 
         {/* API Keys */}
         <Card className="bg-white/5 border-white/10 lg:col-span-3">
-          <CardHeader>
+          <CardHeader className="flex flex-row items-center justify-between">
              <CardTitle className="flex items-center gap-2 text-lg"><Shield className="w-5 h-5 text-primary" /> AI Provider API Keys</CardTitle>
+             <div className="flex gap-2">
+                 {isEditing ? (
+                    <>
+                        <Button variant="ghost" size="sm" onClick={() => setIsEditing(false)} disabled={isSaving}>Cancel</Button>
+                        <Button size="sm" onClick={handleSave} disabled={isSaving}>
+                           {isSaving ? <Loader2 className="w-4 h-4 animate-spin mr-2" /> : "Save to .env"}
+                        </Button>
+                    </>
+                 ) : (
+                    <Button variant="outline" size="sm" onClick={() => setIsEditing(true)}>Edit Keys</Button>
+                 )}
+             </div>
           </CardHeader>
           <CardContent className="space-y-6">
-             <p className="text-xs text-slate-500">These keys are loaded from your root <code className="text-primary">.env</code> file. Environment variables are read-only here.</p>
+             <p className="text-xs text-slate-500">These keys are loaded from your root <code className="text-primary">.env</code> file. {isEditing ? "Editing will directly overwrite them." : "You can edit these to switch API providers."}</p>
              
              <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                 <div className="space-y-2">
@@ -132,10 +169,11 @@ export function SettingsView() {
                    <div className="relative group">
                       <input 
                         type={showOpenAI ? "text" : "password"} 
-                        readOnly 
-                        value={config?.openai_api_key || ""}
-                        className="w-full bg-black/40 border border-white/5 rounded-lg px-4 py-3 pr-12 text-xs font-mono text-slate-300 outline-none"
-                        placeholder="Not set in .env"
+                        readOnly={!isEditing}
+                        value={isEditing ? openaiKey : (config?.openai_api_key || "")}
+                        onChange={(e) => setOpenaiKey(e.target.value)}
+                        className={`w-full bg-black/40 border rounded-lg px-4 py-3 pr-12 text-xs font-mono outline-none transition-colors ${isEditing ? 'border-primary/50 text-white' : 'border-white/5 text-slate-300'}`}
+                        placeholder="sk-..."
                       />
                       <button 
                         onClick={() => setShowOpenAI(!showOpenAI)}
@@ -151,10 +189,11 @@ export function SettingsView() {
                    <div className="relative group">
                       <input 
                         type={showAnthropic ? "text" : "password"} 
-                        readOnly 
-                        value={config?.anthropic_api_key || ""}
-                        className="w-full bg-black/40 border border-white/5 rounded-lg px-4 py-3 pr-12 text-xs font-mono text-slate-300 outline-none"
-                        placeholder="Not set in .env"
+                        readOnly={!isEditing}
+                        value={isEditing ? anthropicKey : (config?.anthropic_api_key || "")}
+                        onChange={(e) => setAnthropicKey(e.target.value)}
+                        className={`w-full bg-black/40 border rounded-lg px-4 py-3 pr-12 text-xs font-mono outline-none transition-colors ${isEditing ? 'border-primary/50 text-white' : 'border-white/5 text-slate-300'}`}
+                        placeholder="sk-ant-..."
                       />
                       <button 
                         onClick={() => setShowAnthropic(!showAnthropic)}
@@ -164,10 +203,6 @@ export function SettingsView() {
                       </button>
                    </div>
                 </div>
-             </div>
-             
-             <div className="pt-4 border-t border-white/5">
-                <p className="text-[10px] text-slate-600">To change these values, please edit the <code className="bg-white/5 px-1 rounded">.env</code> file in your project root and restart the server.</p>
              </div>
           </CardContent>
         </Card>

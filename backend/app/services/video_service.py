@@ -75,19 +75,29 @@ class VideoService:
             return False
 
     @staticmethod
-    def merge_audio_video(video_path: Path, audio_path: Path, output_path: Path) -> bool:
-        """Replace original audio with new audio track."""
+    def merge_audio_video(video_path: Path, audio_path: Path, output_path: Path, srt_path: Optional[Path] = None) -> bool:
+        """Replace original audio with new audio track and optionally burn subtitles."""
         try:
-            logger.info(f"Merging {audio_path} into {video_path}")
-            # -map 0:v:0 -> use video from first input
-            # -map 1:a:0 -> use audio from second input
-            # -c:v copy -> don't re-encode video (fast)
-            # -shortest -> end when shortest stream ends
-            command = [
-                "ffmpeg", "-y", "-i", str(video_path), "-i", str(audio_path),
-                "-c:v", "copy", "-map", "0:v:0", "-map", "1:a:0",
-                "-shortest", str(output_path)
-            ]
+            logger.info(f"Merging {"audio and subtitles" if srt_path else "audio"} into {video_path}")
+            if srt_path and srt_path.exists():
+                # FFMPEG requires severe escaping for Windows paths inside filters
+                escaped_srt = str(srt_path).replace("\\", "\\\\").replace("'", "\\'")
+                filter_str = f"subtitles='{escaped_srt}':force_style='FontName=Arial,FontSize=24,BorderStyle=3,Outline=1,OutlineColour=&H80000000,Shadow=0,MarginV=20'"
+                
+                command = [
+                    "ffmpeg", "-y", "-i", str(video_path), "-i", str(audio_path),
+                    "-vf", filter_str,
+                    "-c:v", "libx264", "-preset", "fast", "-crf", "23",
+                    "-c:a", "aac", "-b:a", "192k",
+                    "-map", "0:v:0", "-map", "1:a:0",
+                    "-shortest", str(output_path)
+                ]
+            else:
+                command = [
+                    "ffmpeg", "-y", "-i", str(video_path), "-i", str(audio_path),
+                    "-c:v", "copy", "-map", "0:v:0", "-map", "1:a:0",
+                    "-shortest", str(output_path)
+                ]
             subprocess.run(command, check=True, stdout=subprocess.DEVNULL, stderr=subprocess.PIPE)
             return True
         except subprocess.CalledProcessError as e:

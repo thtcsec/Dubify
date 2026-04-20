@@ -82,6 +82,32 @@ async def get_settings():
         "anthropic_api_key": settings.ANTHROPIC_API_KEY,
     }
 
+class SettingsUpdate(BaseModel):
+    openai_api_key: Optional[str] = None
+    anthropic_api_key: Optional[str] = None
+
+@router.post("/settings")
+async def update_settings(data: SettingsUpdate):
+    try:
+        from dotenv import set_key
+        env_path = str(Path(__file__).resolve().parent.parent.parent.parent / ".env")
+        
+        # Ensure file exists
+        if not os.path.exists(env_path):
+            Path(env_path).touch()
+            
+        if data.openai_api_key is not None:
+            set_key(env_path, "OPENAI_API_KEY", data.openai_api_key)
+            settings.OPENAI_API_KEY = data.openai_api_key
+            
+        if data.anthropic_api_key is not None:
+            set_key(env_path, "ANTHROPIC_API_KEY", data.anthropic_api_key)
+            settings.ANTHROPIC_API_KEY = data.anthropic_api_key
+            
+        return {"status": "success", "message": "Settings updated"}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to update settings: {str(e)}")
+
 @router.post("/dub-url")
 async def dub_url(
     background_tasks: BackgroundTasks,

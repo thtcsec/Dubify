@@ -7,6 +7,7 @@ from app.services.video_service import VideoService
 from app.services.asr_service import ASRService
 from app.services.translate_service import TranslateService
 from app.services.tts_service import TTSService
+from app.utils.subtitles import chunks_to_srt
 
 logger = logging.getLogger(__name__)
 
@@ -50,17 +51,22 @@ class DubbingPipeline:
             translated_segments = self.translate_service.translate_batch(merged_segments)
 
             # 5. TTS & Alignment
-            logger.info("Step 4/5: Generating TTS and aligning...")
+            logger.info("Step 4/5: Generating TTS and formatting subtitles...")
             audio_segments = await self.tts_service.process_segments(translated_segments, session_dir)
             
-            # 6. Merge Back
-            logger.info("Step 5/5: Merging results...")
+            # Generate SRT from translated segments
+            srt_content = chunks_to_srt(translated_segments)
+            srt_path = session_dir / "translated.srt"
+            srt_path.write_text(srt_content, encoding="utf-8")
+            
+            # 6. Merge Back & Burn Subtitles
+            logger.info("Step 5/5: Merging results and burning subtitles...")
             self.tts_service.create_concat_list(audio_segments, translated_segments, concat_list_path)
             
             if not self.video_service.concat_audio_segments(concat_list_path, final_audio):
                 raise Exception("Failed to concatenate audio segments")
             
-            if not self.video_service.merge_audio_video(video_path, final_audio, output_video):
+            if not self.video_service.merge_audio_video(video_path, final_audio, output_video, srt_path):
                 raise Exception("Failed to merge audio and video")
 
             logger.info(f"Pipeline completed successfully! Output: {output_video}")
