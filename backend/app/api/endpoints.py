@@ -69,9 +69,19 @@ async def fetch_info(url: str = Form(...)):
     except Exception as e:
         raise HTTPException(status_code=400, detail=str(e))
 
-@router.get("/projects")
-async def list_projects():
-    return job_manager.get_all_jobs()
+@router.get("/settings")
+async def get_settings():
+    return {
+        "project_name": settings.PROJECT_NAME,
+        "base_dir": str(settings.BASE_DIR),
+        "storage_dir": str(settings.STORAGE_DIR),
+        "models_dir": str(settings.MODELS_DIR),
+        "whisper_model": settings.DEFAULT_WHISPER_MODEL,
+        "nllb_model": settings.DEFAULT_NLLB_MODEL,
+        # Mocking API keys for display (will be masked in frontend)
+        "openai_api_key": os.getenv("OPENAI_API_KEY", ""),
+        "anthropic_api_key": os.getenv("ANTHROPIC_API_KEY", ""),
+    }
 
 @router.post("/dub-url")
 async def dub_url(

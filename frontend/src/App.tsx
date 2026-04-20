@@ -103,7 +103,7 @@ export default function App() {
   return (
     <SidebarProvider defaultOpen>
       <AppSidebar currentView={currentView} onViewChange={setCurrentView} />
-      <SidebarInset className="bg-slate-950 transition-all duration-300 ease-in-out peer-data-[state=collapsed]:ml-[--sidebar-width-icon] peer-data-[state=expanded]:ml-[--sidebar-width]">
+      <SidebarInset className="bg-slate-950 transition-[margin,width] duration-200 ease-linear peer-data-[state=collapsed]:ml-[--sidebar-width-icon] peer-data-[state=expanded]:ml-[--sidebar-width]">
         <DashboardHeader currentView={currentView} />
 
         <div className="p-8 w-full min-h-[calc(100vh-4rem)] lg:px-12">

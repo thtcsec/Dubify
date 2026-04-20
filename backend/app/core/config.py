@@ -22,7 +22,7 @@ class Settings(BaseSettings):
     
     class Config:
         case_sensitive = True
-        env_file = ".env"
+        env_file = str(Path(__file__).resolve().parent.parent.parent.parent / ".env")
 
     def create_directories(self):
         """Ensure all required directories exist."""

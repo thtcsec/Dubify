@@ -60,7 +60,7 @@ interface AppSidebarProps extends React.ComponentProps<typeof Sidebar> {
 
 export function AppSidebar({ currentView, onViewChange, ...props }: AppSidebarProps) {
   return (
-    <Sidebar collapsible="icon" variant="inset" {...props}>
+    <Sidebar collapsible="icon" {...props}>
       <SidebarHeader className="h-16 border-b border-sidebar-border/50">
         <SidebarMenu>
           <SidebarMenuItem>
