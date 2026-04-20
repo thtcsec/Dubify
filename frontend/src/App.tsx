@@ -1,21 +1,25 @@
 import { useState } from 'react';
-import { DubbingProgress } from './components/DubbingProgress';
-import { Button } from './components/ui/button';
 import { motion, AnimatePresence } from 'framer-motion';
 import { SidebarProvider, SidebarInset } from '@/components/ui/sidebar';
 import { AppSidebar } from './components/AppSidebar';
 import { DashboardHeader } from './components/dashboard/Header';
-import { VideoSourceSection } from './components/dashboard/VideoSourceSection';
-import { ProjectSettings } from './components/dashboard/ProjectSettings';
+
+// Views
+import { DashboardView } from './views/DashboardView';
+import { ProjectsView } from './views/ProjectsView';
+import { HistoryView, SettingsView } from './views/ActivityViews';
+import { HelpView } from './views/HelpView';
+
 import api from './lib/api';
 
 export default function App() {
-  // Global Orchestration State
+  // Global State
+  const [currentView, setCurrentView] = useState('dashboard');
   const [targetLang, setTargetLang] = useState('vi');
   const [jobId, setJobId] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(false);
 
-  // Input States
+  // Dashboard Input States
   const [file, setFile] = useState<File | null>(null);
   const [videoUrl, setVideoUrl] = useState('');
   const [videoInfo, setVideoInfo] = useState<any>(null);
@@ -39,7 +43,6 @@ export default function App() {
     setIsLoading(true);
     const formData = new FormData();
     formData.append('target_lang', targetLang);
-    
     try {
       let response;
       if (file) {
@@ -64,67 +67,57 @@ export default function App() {
     setVideoInfo(null);
   };
 
+  const renderView = () => {
+    switch (currentView) {
+      case 'dashboard':
+        return (
+          <DashboardView 
+            targetLang={targetLang}
+            setTargetLang={setTargetLang}
+            jobId={jobId}
+            setJobId={setJobId}
+            isLoading={isLoading}
+            file={file}
+            setFile={setFile}
+            videoUrl={videoUrl}
+            setVideoUrl={setVideoUrl}
+            videoInfo={videoInfo}
+            handleFetchInfo={handleFetchInfo}
+            handleStartDubbing={handleStartDubbing}
+            resetProject={resetProject}
+          />
+        );
+      case 'projects':
+        return <ProjectsView />;
+      case 'history':
+        return <HistoryView />;
+      case 'settings':
+        return <SettingsView />;
+      case 'help':
+        return <HelpView />;
+      default:
+        return <div>View not found</div>;
+    }
+  };
+
   return (
-    <SidebarProvider>
-      <AppSidebar />
-      <SidebarInset className="bg-slate-950 transition-all duration-300 ease-in-out">
-        <DashboardHeader />
+    <SidebarProvider defaultOpen>
+      <AppSidebar currentView={currentView} onViewChange={setCurrentView} />
+      <SidebarInset className="bg-slate-950 transition-all duration-300 ease-in-out peer-data-[state=collapsed]:ml-[--sidebar-width-icon] peer-data-[state=expanded]:ml-[--sidebar-width]">
+        <DashboardHeader currentView={currentView} />
 
         <div className="p-8 w-full min-h-[calc(100vh-4rem)] lg:px-12">
-          {!jobId && (
-            <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }}>
-               <h1 className="text-3xl font-bold mb-2">Create New Dubbing Project</h1>
-               <p className="text-slate-400 mb-8">Select a source to begin the AI localization process.</p>
+          <AnimatePresence mode="wait">
+            <motion.div
+              key={currentView}
+              initial={{ opacity: 0, x: -10 }}
+              animate={{ opacity: 1, x: 0 }}
+              exit={{ opacity: 0, x: 10 }}
+              transition={{ duration: 0.2 }}
+            >
+              {renderView()}
             </motion.div>
-          )}
-
-          <main>
-            <AnimatePresence mode="wait">
-              {!jobId ? (
-                <motion.div key="creation" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}>
-                  <div className="grid grid-cols-1 lg:grid-cols-12 gap-8">
-                    {/* Source Selection (Left) */}
-                    <div className="lg:col-span-8">
-                      <VideoSourceSection 
-                        file={file} 
-                        setFile={setFile}
-                        videoUrl={videoUrl}
-                        setVideoUrl={setVideoUrl}
-                        videoInfo={videoInfo}
-                        isLoading={isLoading}
-                        onFetchInfo={handleFetchInfo}
-                      />
-                    </div>
-
-                    {/* Settings & Action (Right) */}
-                    <div className="lg:col-span-4">
-                      <ProjectSettings 
-                        targetLang={targetLang}
-                        setTargetLang={setTargetLang}
-                        isLoading={isLoading}
-                        canStart={!!file || !!videoInfo}
-                        onStart={handleStartDubbing}
-                      />
-                    </div>
-                  </div>
-                </motion.div>
-              ) : (
-                <motion.div key="progress" initial={{ opacity: 0, x: 20 }} animate={{ opacity: 1, x: 0 }}>
-                   <div className="flex items-center justify-between mb-8">
-                      <Button variant="ghost" className="text-slate-400" onClick={resetProject}>
-                        ← Create New Project
-                      </Button>
-                      <div className="text-sm text-slate-500">Job ID: <span className="text-slate-300 font-mono">{jobId}</span></div>
-                   </div>
-                   <DubbingProgress 
-                    jobId={jobId} 
-                    onComplete={() => console.log('Job completed!')}
-                    onError={(err) => alert(err)}
-                   />
-                </motion.div>
-              )}
-            </AnimatePresence>
-          </main>
+          </AnimatePresence>
         </div>
       </SidebarInset>
     </SidebarProvider>

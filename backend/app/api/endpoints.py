@@ -69,6 +69,10 @@ async def fetch_info(url: str = Form(...)):
     except Exception as e:
         raise HTTPException(status_code=400, detail=str(e))
 
+@router.get("/projects")
+async def list_projects():
+    return job_manager.get_all_jobs()
+
 @router.post("/dub-url")
 async def dub_url(
     background_tasks: BackgroundTasks,

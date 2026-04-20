@@ -24,43 +24,47 @@ import {
 const data = {
   navMain: [
     {
+      id: "dashboard",
       title: "Dashboard",
-      url: "#",
       icon: LayoutDashboard,
-      isActive: true,
     },
     {
+      id: "projects",
       title: "Projects",
-      url: "#",
       icon: Layers,
     },
     {
+      id: "history",
       title: "History",
-      url: "#",
       icon: Clock,
     },
   ],
   navSecondary: [
     {
+      id: "settings",
       title: "Settings",
-      url: "#",
       icon: Settings,
     },
     {
+      id: "help",
       title: "Help",
-      url: "#",
       icon: HelpCircle,
     },
   ],
 }
 
-export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
+interface AppSidebarProps extends React.ComponentProps<typeof Sidebar> {
+  currentView: string;
+  onViewChange: (view: string) => void;
+}
+
+export function AppSidebar({ currentView, onViewChange, ...props }: AppSidebarProps) {
   return (
-    <Sidebar collapsible="icon" {...props}>
+    <Sidebar collapsible="icon" variant="inset" {...props}>
       <SidebarHeader className="h-16 border-b border-sidebar-border/50">
         <SidebarMenu>
           <SidebarMenuItem>
-            <SidebarMenuButton size="lg" className="hover:bg-transparent">
+            <SidebarMenuButton size="lg" className="hover:bg-transparent" onClick={() => onViewChange("dashboard")}>
               <div className="flex aspect-square size-8 items-center justify-center rounded-lg bg-primary text-primary-foreground">
                 <span className="font-bold">D</span>
               </div>
@@ -77,12 +81,14 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
           <SidebarGroupLabel>Application</SidebarGroupLabel>
           <SidebarMenu>
             {data.navMain.map((item) => (
-              <SidebarMenuItem key={item.title}>
-                <SidebarMenuButton tooltip={item.title} isActive={item.isActive} asChild>
-                  <a href={item.url}>
-                    {item.icon && <item.icon />}
-                    <span>{item.title}</span>
-                  </a>
+              <SidebarMenuItem key={item.id}>
+                <SidebarMenuButton 
+                  tooltip={item.title} 
+                  isActive={currentView === item.id}
+                  onClick={() => onViewChange(item.id)}
+                >
+                  {item.icon && <item.icon />}
+                  <span>{item.title}</span>
                 </SidebarMenuButton>
               </SidebarMenuItem>
             ))}
@@ -92,12 +98,14 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
       <SidebarFooter className="border-t border-sidebar-border/50 p-4">
         <SidebarMenu>
             {data.navSecondary.map((item) => (
-              <SidebarMenuItem key={item.title}>
-                <SidebarMenuButton size="sm" asChild>
-                  <a href={item.url}>
-                    <item.icon />
-                    <span>{item.title}</span>
-                  </a>
+              <SidebarMenuItem key={item.id}>
+                <SidebarMenuButton 
+                  size="sm" 
+                  isActive={currentView === item.id}
+                  onClick={() => onViewChange(item.id)}
+                >
+                  <item.icon />
+                  <span>{item.title}</span>
                 </SidebarMenuButton>
               </SidebarMenuItem>
             ))}
