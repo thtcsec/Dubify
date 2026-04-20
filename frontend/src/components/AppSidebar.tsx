@@ -78,9 +78,11 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
           <SidebarMenu>
             {data.navMain.map((item) => (
               <SidebarMenuItem key={item.title}>
-                <SidebarMenuButton tooltip={item.title} isActive={item.isActive}>
-                  {item.icon && <item.icon />}
-                  <span>{item.title}</span>
+                <SidebarMenuButton tooltip={item.title} isActive={item.isActive} asChild>
+                  <a href={item.url}>
+                    {item.icon && <item.icon />}
+                    <span>{item.title}</span>
+                  </a>
                 </SidebarMenuButton>
               </SidebarMenuItem>
             ))}
@@ -91,9 +93,11 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
         <SidebarMenu>
             {data.navSecondary.map((item) => (
               <SidebarMenuItem key={item.title}>
-                <SidebarMenuButton size="sm">
-                  <item.icon />
-                  <span>{item.title}</span>
+                <SidebarMenuButton size="sm" asChild>
+                  <a href={item.url}>
+                    <item.icon />
+                    <span>{item.title}</span>
+                  </a>
                 </SidebarMenuButton>
               </SidebarMenuItem>
             ))}

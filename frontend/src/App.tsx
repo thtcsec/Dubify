@@ -67,10 +67,10 @@ export default function App() {
   return (
     <SidebarProvider>
       <AppSidebar />
-      <SidebarInset className="bg-slate-950">
+      <SidebarInset className="bg-slate-950 transition-all duration-300 ease-in-out">
         <DashboardHeader />
 
-        <div className="p-8 max-w-6xl mx-auto w-full min-h-[calc(100vh-4rem)]">
+        <div className="p-8 w-full min-h-[calc(100vh-4rem)] lg:px-12">
           {!jobId && (
             <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }}>
                <h1 className="text-3xl font-bold mb-2">Create New Dubbing Project</h1>
