@@ -1,74 +1,260 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useCallback } from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
-import { History as HistoryIcon, Shield, HardDrive, Globe, Eye, EyeOff, Loader2 } from 'lucide-react';
+import {
+  History as HistoryIcon, Shield, HardDrive, Globe,
+  Eye, EyeOff, Loader2, CheckCircle2, XCircle, Clock,
+  PauseCircle, Ban, RefreshCw
+} from 'lucide-react';
 import { Label } from '@/components/ui/label';
 import { Button } from '@/components/ui/button';
+import { Badge } from '@/components/ui/badge';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import api from '@/lib/api';
 
+// ─── History View (Real data from /jobs endpoint) ───────────────────────────
+
+interface Job {
+  id: string;
+  filename: string;
+  type: string;
+  status: string;
+  message: string | null;
+  error: string | null;
+  created_at: string;
+  updated_at: string;
+  started_at: string | null;
+  completed_at: string | null;
+  output_path: string | null;
+}
+
+interface JobsResponse {
+  jobs: Job[];
+  total: number;
+}
+
+interface SettingsResponse {
+  project_name: string;
+  base_dir: string;
+  storage_dir: string;
+  models_dir: string;
+  processing_engine: 'local' | 'cloud';
+  processing_mode: 'offline' | 'hybrid' | 'online';
+  capabilities?: {
+    cloud_llm: boolean;
+    network_tts: boolean;
+    url_import: boolean;
+  };
+  cloud_status?: {
+    ready: boolean;
+    configured_providers: string[];
+    message: string;
+  };
+  local_tts_status?: {
+    ready: boolean;
+    engine: string;
+    available_models: string[];
+    message: string;
+  };
+  whisper_model: string;
+  nllb_model: string;
+  openai_api_key: string;
+  anthropic_api_key: string;
+  gemini_api_key: string;
+  groq_api_key: string;
+  keys_configured: Record<string, boolean>;
+}
+
+type SettingsApiKeyField = 'openai_api_key' | 'anthropic_api_key' | 'gemini_api_key' | 'groq_api_key';
+
+function timeAgo(dateStr: string): string {
+  const now = new Date();
+  const date = new Date(dateStr);
+  const diffMs = now.getTime() - date.getTime();
+  const diffMins = Math.floor(diffMs / 60000);
+  if (diffMins < 1) return 'Just now';
+  if (diffMins < 60) return `${diffMins} min ago`;
+  const diffHours = Math.floor(diffMins / 60);
+  if (diffHours < 24) return `${diffHours}h ago`;
+  const diffDays = Math.floor(diffHours / 24);
+  if (diffDays < 7) return `${diffDays}d ago`;
+  return date.toLocaleDateString();
+}
+
+function statusIcon(status: string) {
+  switch (status) {
+    case 'completed': return <CheckCircle2 className="w-4 h-4 text-green-400" />;
+    case 'failed': return <XCircle className="w-4 h-4 text-red-400" />;
+    case 'processing': return <Loader2 className="w-4 h-4 text-blue-400 animate-spin" />;
+    case 'cancelled': return <Ban className="w-4 h-4 text-orange-400" />;
+    case 'paused': return <PauseCircle className="w-4 h-4 text-yellow-400" />;
+    default: return <Clock className="w-4 h-4 text-slate-400" />;
+  }
+}
+
+function statusColor(status: string) {
+  switch (status) {
+    case 'completed': return 'bg-green-500/10 text-green-400';
+    case 'failed': return 'bg-red-500/10 text-red-400';
+    case 'processing': return 'bg-blue-500/10 text-blue-400';
+    case 'cancelled': return 'bg-orange-500/10 text-orange-400';
+    case 'paused': return 'bg-yellow-500/10 text-yellow-400';
+    default: return 'bg-slate-500/10 text-slate-400';
+  }
+}
+
 export function HistoryView() {
-  const events = [
-    { id: 1, action: "Project Created", detail: "Dubbed 'Intro_to_AI.mp4' to Vietnamese", date: "2 mins ago", type: "create" },
-    { id: 2, action: "Download", detail: "Downloaded 'Marketing_Ad_EN.mp4'", date: "1 hour ago", type: "download" },
-    { id: 3, action: "Login", detail: "New login from Chrome on Windows", date: "2 hours ago", type: "system" },
-    { id: 4, action: "Import Failed", detail: "YouTube URL private or inaccessible", date: "Yesterday", type: "error" },
-  ];
+  const [jobs, setJobs] = useState<Job[]>([]);
+  const [total, setTotal] = useState(0);
+  const [isLoading, setIsLoading] = useState(true);
+  const [statusFilter, setStatusFilter] = useState<string>('all');
+  const [offset, setOffset] = useState(0);
+  const limit = 20;
+
+  const fetchJobs = useCallback(async () => {
+    setIsLoading(true);
+    try {
+      const params: { limit: number; offset: number; status?: string } = { limit, offset };
+      if (statusFilter !== 'all') params.status = statusFilter;
+      const response = await api.get<JobsResponse>('/jobs', { params });
+      setJobs(response.data.jobs || []);
+      setTotal(response.data.total || 0);
+    } catch (error) {
+      console.error('Failed to fetch job history', error);
+    } finally {
+      setIsLoading(false);
+    }
+  }, [limit, offset, statusFilter]);
+
+  useEffect(() => {
+    const timeoutId = window.setTimeout(() => {
+      void fetchJobs();
+    }, 0);
+
+    return () => window.clearTimeout(timeoutId);
+  }, [fetchJobs]);
 
   return (
     <div className="space-y-6">
-      <div>
-        <h1 className="text-3xl font-bold mb-2">Activity History</h1>
-        <p className="text-slate-400">Track all your dubbing actions and system events.</p>
+      <div className="flex items-center justify-between">
+        <div>
+          <h1 className="text-3xl font-bold mb-2">Activity History</h1>
+          <p className="text-slate-400">Track all your dubbing jobs and their status.</p>
+        </div>
+        <div className="flex items-center gap-3">
+          <Select value={statusFilter} onValueChange={(v) => { setStatusFilter(v); setOffset(0); }}>
+            <SelectTrigger className="w-[140px] bg-white/5 border-white/10">
+              <SelectValue placeholder="Filter" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="all">All</SelectItem>
+              <SelectItem value="completed">Completed</SelectItem>
+              <SelectItem value="processing">Processing</SelectItem>
+              <SelectItem value="failed">Failed</SelectItem>
+              <SelectItem value="cancelled">Cancelled</SelectItem>
+              <SelectItem value="paused">Paused</SelectItem>
+              <SelectItem value="pending">Pending</SelectItem>
+            </SelectContent>
+          </Select>
+          <Button variant="ghost" size="icon" onClick={fetchJobs} title="Refresh">
+            <RefreshCw className={`w-4 h-4 ${isLoading ? 'animate-spin' : ''}`} />
+          </Button>
+        </div>
       </div>
 
       <Card className="bg-white/5 border-white/10">
         <CardContent className="p-0">
-          {events.map((event, i) => (
-            <div key={event.id} className={`p-4 flex gap-4 items-start ${i !== events.length - 1 ? 'border-b border-white/5' : ''}`}>
-               <div className={`p-2 rounded-full ${
-                 event.type === 'create' ? 'bg-green-500/10 text-green-400' :
-                 event.type === 'error' ? 'bg-red-500/10 text-red-400' :
-                 'bg-slate-500/10 text-slate-400'
-               }`}>
-                 <HistoryIcon className="w-4 h-4" />
-               </div>
-               <div className="flex-1">
-                 <div className="flex justify-between items-center mb-1">
-                   <h4 className="font-semibold text-sm">{event.action}</h4>
-                   <span className="text-[10px] text-slate-500">{event.date}</span>
-                 </div>
-                 <p className="text-xs text-slate-400">{event.detail}</p>
-               </div>
+          {isLoading ? (
+            <div className="flex items-center justify-center py-16">
+              <Loader2 className="w-6 h-6 animate-spin text-slate-400" />
             </div>
-          ))}
+          ) : jobs.length === 0 ? (
+            <div className="py-16 text-center text-slate-500">
+              <HistoryIcon className="w-10 h-10 mx-auto mb-3 opacity-30" />
+              <p>No jobs found. Start a dubbing project from the Dashboard!</p>
+            </div>
+          ) : (
+            jobs.map((job, i) => (
+              <div key={job.id} className={`p-4 flex gap-4 items-start ${i !== jobs.length - 1 ? 'border-b border-white/5' : ''}`}>
+                <div className={`p-2 rounded-full ${statusColor(job.status)}`}>
+                  {statusIcon(job.status)}
+                </div>
+                <div className="flex-1 min-w-0">
+                  <div className="flex justify-between items-center mb-1">
+                    <div className="flex items-center gap-2">
+                      <h4 className="font-semibold text-sm truncate">{job.filename || 'Untitled'}</h4>
+                      <Badge variant="outline" className="text-[10px] px-1.5 py-0">
+                        {job.type || 'dubbing'}
+                      </Badge>
+                    </div>
+                    <span className="text-[10px] text-slate-500 shrink-0 ml-2">{timeAgo(job.created_at)}</span>
+                  </div>
+                  <p className="text-xs text-slate-400 truncate">
+                    {job.status === 'failed' && job.error ? `Error: ${job.error}` :
+                     job.message || `Status: ${job.status}`}
+                  </p>
+                  <p className="text-[10px] text-slate-600 font-mono mt-1">{job.id}</p>
+                </div>
+                <Badge className={`shrink-0 text-[10px] ${statusColor(job.status)}`}>
+                  {job.status.toUpperCase()}
+                </Badge>
+              </div>
+            ))
+          )}
         </CardContent>
       </Card>
+
+      {/* Pagination */}
+      {total > limit && (
+        <div className="flex items-center justify-between">
+          <p className="text-xs text-slate-500">
+            Showing {offset + 1}-{Math.min(offset + limit, total)} of {total}
+          </p>
+          <div className="flex gap-2">
+            <Button variant="outline" size="sm" disabled={offset === 0} onClick={() => setOffset(Math.max(0, offset - limit))}>
+              Previous
+            </Button>
+            <Button variant="outline" size="sm" disabled={offset + limit >= total} onClick={() => setOffset(offset + limit)}>
+              Next
+            </Button>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
 
+// ─── Settings View (with Gemini + Groq keys) ───────────────────────────────
+
 export function SettingsView() {
-  const [config, setConfig] = useState<any>(null);
-  const [showOpenAI, setShowOpenAI] = useState(false);
-  const [showAnthropic, setShowAnthropic] = useState(false);
+  const [config, setConfig] = useState<SettingsResponse | null>(null);
+  const [showKeys, setShowKeys] = useState<Record<string, boolean>>({});
   const [isEditing, setIsEditing] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
 
-  // Local state for editing form
   const [openaiKey, setOpenaiKey] = useState("");
   const [anthropicKey, setAnthropicKey] = useState("");
+  const [geminiKey, setGeminiKey] = useState("");
+  const [groqKey, setGroqKey] = useState("");
+  const [processingEngine, setProcessingEngine] = useState<'local' | 'cloud'>('local');
+  const [processingMode, setProcessingMode] = useState<'offline' | 'hybrid' | 'online'>('hybrid');
+  const [saveWarning, setSaveWarning] = useState<string | null>(null);
 
   useEffect(() => {
     let mounted = true;
     const fetchConfig = async () => {
       try {
-        const response = await api.get('/settings');
+        const response = await api.get<SettingsResponse>('/settings');
         if (mounted) {
           setConfig(response.data);
           setOpenaiKey(response.data.openai_api_key || "");
           setAnthropicKey(response.data.anthropic_api_key || "");
+          setGeminiKey(response.data.gemini_api_key || "");
+          setGroqKey(response.data.groq_api_key || "");
+          setProcessingEngine(response.data.processing_engine || 'local');
+          setProcessingMode(response.data.processing_mode || 'hybrid');
         }
-      } catch (err) {
-        console.error('Failed to fetch config');
+      } catch (error) {
+        console.error('Failed to fetch config', error);
       }
     };
     fetchConfig();
@@ -78,18 +264,45 @@ export function SettingsView() {
   const handleSave = async () => {
     setIsSaving(true);
     try {
-      await api.post('/settings', {
+      const saveResponse = await api.post<{ warning?: string | null }>('/settings', {
+        processing_engine: processingEngine,
+        processing_mode: processingMode,
         openai_api_key: openaiKey,
-        anthropic_api_key: anthropicKey
+        anthropic_api_key: anthropicKey,
+        gemini_api_key: geminiKey,
+        groq_api_key: groqKey,
       });
-      setConfig({ ...config, openai_api_key: openaiKey, anthropic_api_key: anthropicKey });
+      setSaveWarning(saveResponse.data.warning || null);
+      // Refresh config from server to get masked values
+      const response = await api.get<SettingsResponse>('/settings');
+      setConfig(response.data);
+      setOpenaiKey(response.data.openai_api_key || "");
+      setAnthropicKey(response.data.anthropic_api_key || "");
+      setGeminiKey(response.data.gemini_api_key || "");
+      setGroqKey(response.data.groq_api_key || "");
+      setProcessingEngine(response.data.processing_engine || 'local');
+      setProcessingMode(response.data.processing_mode || 'hybrid');
       setIsEditing(false);
-    } catch (err) {
-        alert("Failed to save configuration to .env");
+    } catch {
+      alert("Failed to save configuration to .env");
     } finally {
-        setIsSaving(false);
+      setIsSaving(false);
     }
   };
+
+  const toggleShow = (key: string) => setShowKeys(prev => ({ ...prev, [key]: !prev[key] }));
+
+  const API_KEY_FIELDS = [
+    { id: 'openai', configKey: 'openai_api_key' as SettingsApiKeyField, label: 'OpenAI API Key', placeholder: 'sk-...', value: openaiKey, setter: setOpenaiKey },
+    { id: 'anthropic', configKey: 'anthropic_api_key' as SettingsApiKeyField, label: 'Anthropic API Key', placeholder: 'sk-ant-...', value: anthropicKey, setter: setAnthropicKey },
+    { id: 'gemini', configKey: 'gemini_api_key' as SettingsApiKeyField, label: 'Google Gemini API Key', placeholder: 'AIza...', value: geminiKey, setter: setGeminiKey },
+    { id: 'groq', configKey: 'groq_api_key' as SettingsApiKeyField, label: 'Groq API Key', placeholder: 'gsk_...', value: groqKey, setter: setGroqKey },
+  ];
+  const cloudStatusReady = Boolean(config?.cloud_status?.ready);
+  const cloudStatusMessage = config?.cloud_status?.message || 'Cloud status is unavailable. Refresh after the backend loads the latest settings API.';
+  const localTtsReady = Boolean(config?.local_tts_status?.ready);
+  const localTtsMessage = config?.local_tts_status?.message || 'Offline TTS status is unavailable.';
+  const localTtsModelCount = config?.local_tts_status?.available_models?.length || 0;
 
   return (
     <div className="space-y-6">
@@ -102,108 +315,181 @@ export function SettingsView() {
         {/* Environment Paths */}
         <Card className="bg-white/5 border-white/10 lg:col-span-2">
           <CardHeader>
-             <CardTitle className="flex items-center gap-2 text-lg"><HardDrive className="w-5 h-5 text-primary" /> Environment Paths</CardTitle>
+            <CardTitle className="flex items-center gap-2 text-lg"><HardDrive className="w-5 h-5 text-primary" /> Environment Paths</CardTitle>
           </CardHeader>
           <CardContent className="space-y-4">
-             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                <div className="space-y-1">
-                   <Label className="text-[10px] uppercase text-slate-500">Project Root</Label>
-                   <p className="text-xs font-mono bg-black/20 p-2 rounded truncate">{config?.base_dir}</p>
-                </div>
-                <div className="space-y-1">
-                   <Label className="text-[10px] uppercase text-slate-500">Storage Directory</Label>
-                   <p className="text-xs font-mono bg-black/20 p-2 rounded truncate">{config?.storage_dir}</p>
-                </div>
-                <div className="space-y-1">
-                   <Label className="text-[10px] uppercase text-slate-500">Models Directory</Label>
-                   <p className="text-xs font-mono bg-black/20 p-2 rounded truncate">{config?.models_dir}</p>
-                </div>
-                <div className="space-y-1">
-                   <Label className="text-[10px] uppercase text-slate-500">Project Name</Label>
-                   <p className="text-xs font-mono bg-black/20 p-2 rounded">{config?.project_name}</p>
-                </div>
-             </div>
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              <div className="space-y-1">
+                <Label className="text-[10px] uppercase text-slate-500">Project Root</Label>
+                <p className="text-xs font-mono bg-black/20 p-2 rounded truncate">{config?.base_dir}</p>
+              </div>
+              <div className="space-y-1">
+                <Label className="text-[10px] uppercase text-slate-500">Storage Directory</Label>
+                <p className="text-xs font-mono bg-black/20 p-2 rounded truncate">{config?.storage_dir}</p>
+              </div>
+              <div className="space-y-1">
+                <Label className="text-[10px] uppercase text-slate-500">Models Directory</Label>
+                <p className="text-xs font-mono bg-black/20 p-2 rounded truncate">{config?.models_dir}</p>
+              </div>
+              <div className="space-y-1">
+                <Label className="text-[10px] uppercase text-slate-500">Project Name</Label>
+                <p className="text-xs font-mono bg-black/20 p-2 rounded">{config?.project_name}</p>
+              </div>
+            </div>
           </CardContent>
         </Card>
 
         {/* AI Models */}
         <Card className="bg-white/5 border-white/10">
           <CardHeader>
-             <CardTitle className="flex items-center gap-2 text-lg"><Globe className="w-5 h-5 text-primary" /> Default Models</CardTitle>
+            <CardTitle className="flex items-center gap-2 text-lg"><Globe className="w-5 h-5 text-primary" /> Default Models</CardTitle>
           </CardHeader>
           <CardContent className="space-y-4">
-             <div className="space-y-1">
-                <Label className="text-[10px] uppercase text-slate-500">Whisper ASR</Label>
-                <p className="text-sm font-semibold">{config?.whisper_model}</p>
-             </div>
-             <div className="space-y-1">
-                <Label className="text-[10px] uppercase text-slate-500">NLLB Translation</Label>
-                <p className="text-sm font-semibold truncate">{config?.nllb_model}</p>
-             </div>
+            <div className="space-y-2">
+              <Label className="text-[10px] uppercase text-slate-500">Processing Engine</Label>
+              <Select value={processingEngine} onValueChange={(value: 'local' | 'cloud') => setProcessingEngine(value)} disabled={!isEditing}>
+                <SelectTrigger className="bg-black/20 border-white/10">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="local">Local Engine</SelectItem>
+                  <SelectItem value="cloud">Cloud Engine</SelectItem>
+                </SelectContent>
+              </Select>
+              <p className="text-[10px] text-slate-500">
+                {processingEngine === 'local'
+                  ? 'Prefer local translation and local-first processing where available.'
+                  : 'Prefer cloud AI providers. The app will check whether API keys are configured.'}
+              </p>
+            </div>
+            <div className="space-y-2">
+              <Label className="text-[10px] uppercase text-slate-500">Connectivity Mode</Label>
+              <Select value={processingMode} onValueChange={(value: 'offline' | 'hybrid' | 'online') => setProcessingMode(value)} disabled={!isEditing}>
+                <SelectTrigger className="bg-black/20 border-white/10">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="offline">Offline</SelectItem>
+                  <SelectItem value="hybrid">Hybrid</SelectItem>
+                  <SelectItem value="online">Online</SelectItem>
+                </SelectContent>
+              </Select>
+              <p className="text-[10px] text-slate-500">
+                {processingMode === 'offline'
+                  ? 'Uses local ASR and local translation only. Remote URL import, Edge TTS, and cloud LLM rewrite are disabled.'
+                  : processingMode === 'hybrid'
+                    ? 'Uses local ASR and translation by default, while still allowing URL import, Edge TTS, and optional cloud LLM rewrite.'
+                    : 'Uses online services when available for translation and LLM rewrite, with remote import enabled.'}
+              </p>
+              {config?.capabilities && (
+                <div className="grid grid-cols-3 gap-2 text-[10px] text-slate-500">
+                  <div>LLM: {config.capabilities.cloud_llm ? 'On' : 'Off'}</div>
+                  <div>TTS: {config.capabilities.network_tts ? 'On' : 'Off'}</div>
+                  <div>URL Import: {config.capabilities.url_import ? 'On' : 'Off'}</div>
+                </div>
+              )}
+            </div>
+            <div className={`rounded-lg border px-3 py-2 text-[10px] ${
+              cloudStatusReady
+                ? 'border-green-500/20 bg-green-500/10 text-green-300'
+                : 'border-yellow-500/20 bg-yellow-500/10 text-yellow-200'
+            }`}>
+              <div className="font-semibold">
+                Cloud Status: {cloudStatusReady ? 'Ready' : 'Missing Keys'}
+              </div>
+              <div>{cloudStatusMessage}</div>
+            </div>
+            <div className={`rounded-lg border px-3 py-2 text-[10px] ${
+              localTtsReady
+                ? 'border-green-500/20 bg-green-500/10 text-green-300'
+                : 'border-yellow-500/20 bg-yellow-500/10 text-yellow-200'
+            }`}>
+              <div className="font-semibold">
+                Offline TTS: {localTtsReady ? 'Ready' : 'Not Ready'}
+              </div>
+              <div>{localTtsMessage}</div>
+              <div className="mt-1 text-[10px] opacity-80">
+                Engine: {config?.local_tts_status?.engine || 'piper'} · Models: {localTtsModelCount}
+              </div>
+            </div>
+            {saveWarning && (
+              <div className="rounded-lg border border-yellow-500/20 bg-yellow-500/10 px-3 py-2 text-[10px] text-yellow-200">
+                {saveWarning}
+              </div>
+            )}
+            <div className="space-y-1">
+              <Label className="text-[10px] uppercase text-slate-500">Whisper ASR</Label>
+              <p className="text-sm font-semibold">{config?.whisper_model}</p>
+            </div>
+            <div className="space-y-1">
+              <Label className="text-[10px] uppercase text-slate-500">NLLB Translation</Label>
+              <p className="text-sm font-semibold truncate">{config?.nllb_model}</p>
+            </div>
           </CardContent>
         </Card>
 
-        {/* API Keys */}
+        {/* API Keys — All 4 providers */}
         <Card className="bg-white/5 border-white/10 lg:col-span-3">
           <CardHeader className="flex flex-row items-center justify-between">
-             <CardTitle className="flex items-center gap-2 text-lg"><Shield className="w-5 h-5 text-primary" /> AI Provider API Keys</CardTitle>
-             <div className="flex gap-2">
-                 {isEditing ? (
-                    <>
-                        <Button variant="ghost" size="sm" onClick={() => setIsEditing(false)} disabled={isSaving}>Cancel</Button>
-                        <Button size="sm" onClick={handleSave} disabled={isSaving}>
-                           {isSaving ? <Loader2 className="w-4 h-4 animate-spin mr-2" /> : "Save to .env"}
-                        </Button>
-                    </>
-                 ) : (
-                    <Button variant="outline" size="sm" onClick={() => setIsEditing(true)}>Edit Keys</Button>
-                 )}
-             </div>
+            <CardTitle className="flex items-center gap-2 text-lg"><Shield className="w-5 h-5 text-primary" /> AI Provider API Keys</CardTitle>
+            <div className="flex gap-2">
+              {isEditing ? (
+                <>
+                  <Button variant="ghost" size="sm" onClick={() => setIsEditing(false)} disabled={isSaving}>Cancel</Button>
+                  <Button size="sm" onClick={handleSave} disabled={isSaving}>
+                    {isSaving ? <Loader2 className="w-4 h-4 animate-spin mr-2" /> : null}
+                    Save to .env
+                  </Button>
+                </>
+              ) : (
+                <Button variant="outline" size="sm" onClick={() => setIsEditing(true)}>Edit Keys</Button>
+              )}
+            </div>
           </CardHeader>
           <CardContent className="space-y-6">
-             <p className="text-xs text-slate-500">These keys are loaded from your root <code className="text-primary">.env</code> file. {isEditing ? "Editing will directly overwrite them." : "You can edit these to switch API providers."}</p>
-             
-             <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                <div className="space-y-2">
-                   <Label className="text-xs text-slate-400">OpenAI API Key</Label>
-                   <div className="relative group">
-                      <input 
-                        type={showOpenAI ? "text" : "password"} 
-                        readOnly={!isEditing}
-                        value={isEditing ? openaiKey : (config?.openai_api_key || "")}
-                        onChange={(e) => setOpenaiKey(e.target.value)}
-                        className={`w-full bg-black/40 border rounded-lg px-4 py-3 pr-12 text-xs font-mono outline-none transition-colors ${isEditing ? 'border-primary/50 text-white' : 'border-white/5 text-slate-300'}`}
-                        placeholder="sk-..."
-                      />
-                      <button 
-                        onClick={() => setShowOpenAI(!showOpenAI)}
-                        className="absolute right-3 top-1/2 -translate-y-1/2 p-2 hover:bg-white/5 rounded-md transition-colors"
-                      >
-                        {showOpenAI ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
-                      </button>
-                   </div>
-                </div>
+            <p className="text-xs text-slate-500">
+              These keys are loaded from your root <code className="text-primary">.env</code> file.
+              {isEditing ? " Editing will directly overwrite them." : " Click Edit Keys to modify."}
+              {config?.keys_configured && (
+                <span className="ml-2">
+                  Configured: {Object.entries(config.keys_configured)
+                    .filter(([, v]) => Boolean(v))
+                    .map(([k]) => k)
+                    .join(', ') || 'None'}
+                </span>
+              )}
+            </p>
 
-                <div className="space-y-2">
-                   <Label className="text-xs text-slate-400">Anthropic API Key</Label>
-                   <div className="relative group">
-                      <input 
-                        type={showAnthropic ? "text" : "password"} 
-                        readOnly={!isEditing}
-                        value={isEditing ? anthropicKey : (config?.anthropic_api_key || "")}
-                        onChange={(e) => setAnthropicKey(e.target.value)}
-                        className={`w-full bg-black/40 border rounded-lg px-4 py-3 pr-12 text-xs font-mono outline-none transition-colors ${isEditing ? 'border-primary/50 text-white' : 'border-white/5 text-slate-300'}`}
-                        placeholder="sk-ant-..."
-                      />
-                      <button 
-                        onClick={() => setShowAnthropic(!showAnthropic)}
-                        className="absolute right-3 top-1/2 -translate-y-1/2 p-2 hover:bg-white/5 rounded-md transition-colors"
-                      >
-                        {showAnthropic ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
-                      </button>
-                   </div>
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+              {API_KEY_FIELDS.map((field) => (
+                <div key={field.id} className="space-y-2">
+                  <Label className="text-xs text-slate-400">{field.label}</Label>
+                  <div className="relative group">
+                    <input
+                      type={showKeys[field.id] ? "text" : "password"}
+                      readOnly={!isEditing}
+                      value={isEditing ? field.value : (config?.[field.configKey] || "")}
+                      onChange={(e) => field.setter(e.target.value)}
+                      className={`w-full bg-black/40 border rounded-lg px-4 py-3 pr-12 text-xs font-mono outline-none transition-colors ${
+                        isEditing ? 'border-primary/50 text-white' : 'border-white/5 text-slate-300'
+                      }`}
+                      placeholder={field.placeholder}
+                    />
+                    <button
+                      onClick={() => toggleShow(field.id)}
+                      className="absolute right-3 top-1/2 -translate-y-1/2 p-2 hover:bg-white/5 rounded-md transition-colors"
+                    >
+                      {showKeys[field.id] ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                    </button>
+                  </div>
+                  {config?.keys_configured && (
+                    <p className={`text-[10px] ${config.keys_configured[field.id] ? 'text-green-500' : 'text-slate-600'}`}>
+                      {config.keys_configured[field.id] ? '✓ Configured' : '○ Not set'}
+                    </p>
+                  )}
                 </div>
-             </div>
+              ))}
+            </div>
           </CardContent>
         </Card>
       </div>

@@ -11,6 +11,8 @@ yt-dlp
 transformers>=4.48.0
 sentencepiece
 edge-tts>=6.1.0
+piper-tts>=1.4.2
+pyttsx3
 ffmpeg-python
 moviepy
 deep-translator
@@ -20,3 +22,4 @@ soundfile
 numpy
 tqdm
 python-dotenv
+requests

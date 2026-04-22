@@ -3,7 +3,8 @@ interface HeaderProps {
 }
 
 const VIEW_NAMES: Record<string, string> = {
-    dashboard: "Create New Project",
+    dashboard: "Dub Video",
+    studio: "AI News Studio",
     projects: "My Projects",
     history: "Activity History",
     settings: "Settings",

@@ -5,12 +5,14 @@ import {
   Settings,
   HelpCircle,
   PanelLeftClose,
-  PanelLeftOpen
+  PanelLeftOpen,
+  Sparkles
 } from "lucide-react";
-import { Button } from "@/components/ui/button";
+import { Button } from "../components/ui/button";
 
 const NAV_MAIN = [
-  { id: "dashboard", title: "Dashboard", icon: LayoutDashboard },
+  { id: "dashboard", title: "Dub Video", icon: LayoutDashboard },
+  { id: "studio", title: "AI Studio", icon: Sparkles },
   { id: "projects", title: "Projects", icon: Layers },
   { id: "history", title: "History", icon: Clock },
 ];

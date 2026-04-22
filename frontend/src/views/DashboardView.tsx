@@ -8,13 +8,18 @@ interface DashboardViewProps {
   targetLang: string;
   setTargetLang: (lang: string) => void;
   jobId: string | null;
-  setJobId: (id: string | null) => void;
   isLoading: boolean;
   file: File | null;
   setFile: (file: File | null) => void;
   videoUrl: string;
   setVideoUrl: (url: string) => void;
-  videoInfo: any;
+  videoInfo: {
+    title: string;
+    duration: number;
+    thumbnail?: string | null;
+    source?: string | null;
+    url?: string;
+  } | null;
   fetchError: string | null;
   handleFetchInfo: () => void;
   handleStartDubbing: () => void;
@@ -25,7 +30,6 @@ export function DashboardView({
   targetLang,
   setTargetLang,
   jobId,
-  setJobId,
   isLoading,
   file,
   setFile,

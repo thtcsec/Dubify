@@ -80,3 +80,27 @@ docker compose logs -f
 ## 🤝 Maintainer
 **Trinh Hoang Tu (thtcsec)**
 © 2026 Dubify AI
+
+## 🔐 Douyin/TikTok Cookie Setup (Important)
+
+Some Douyin/TikTok videos require fresh browser cookies. If you see errors like `Fresh cookies are needed`, add these values in `.env` at project root:
+
+```bash
+YTDLP_COOKIES_FROM_BROWSERS=chrome,edge,firefox
+# optional: exported Netscape cookies file path
+YTDLP_COOKIE_FILE=
+# optional: proxy if your network is restricted
+YTDLP_PROXY=
+YTDLP_SOCKET_TIMEOUT=20
+
+# optional: self-hosted external parser API base (for hard anti-bot cases)
+# example: https://your-douyin-parser.example.com
+DOUYIN_FALLBACK_API_BASE=
+# optional: API key for external parser (if provider requires auth)
+DOUYIN_FALLBACK_API_KEY=
+```
+
+Tips:
+- Open the target video in your browser first, then retry quickly in Dubify.
+- Keep your browser signed in if the source platform requires account/session checks.
+- For highest stability, deploy your own parser API and set `DOUYIN_FALLBACK_API_BASE`.

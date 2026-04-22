@@ -15,9 +15,10 @@ except ImportError:
 logger = logging.getLogger(__name__)
 
 class ASRService:
-    def __init__(self, model_size: str = "base", device: str = "cpu"):
+    def __init__(self, model_size: str = "base", device: Optional[str] = None):
+        import torch
         self.model_size = model_size
-        self.device = device
+        self.device = device or ("cuda" if torch.cuda.is_available() else "cpu")
         self.model = None
 
     def _load_model(self):
@@ -27,7 +28,8 @@ class ASRService:
         logger.info(f"Loading Whisper model: {self.model_size} on {self.device}")
         if HAS_FASTER_WHISPER:
             # compute_type can be float16, int8_float16, int8
-            self.model = WhisperModel(self.model_size, device=self.device, compute_type="int8")
+            compute_type = "float16" if self.device == "cuda" else "int8"
+            self.model = WhisperModel(self.model_size, device=self.device, compute_type=compute_type)
         else:
             self.model = whisper.load_model(self.model_size, device=self.device)
 

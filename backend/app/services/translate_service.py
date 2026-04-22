@@ -8,11 +8,32 @@ from app.core.config import settings
 logger = logging.getLogger(__name__)
 
 class TranslateService:
-    def __init__(self, target_lang: str = "vi", service_type: str = "google"):
+    def __init__(self, target_lang: str = "vi", service_type: Optional[str] = None):
         self.target_lang = target_lang
-        self.service_type = service_type # "google", "nllb", "ollama"
+        self.service_type = service_type or settings.default_translation_service()  # "google", "nllb", "ollama"
         self.nllb_model = None
         self.nllb_tokenizer = None
+
+    @staticmethod
+    def _nllb_lang_code(lang: str) -> str:
+        mapping = {
+            "ar": "arb_Arab",
+            "de": "deu_Latn",
+            "en": "eng_Latn",
+            "es": "spa_Latn",
+            "fr": "fra_Latn",
+            "hi": "hin_Deva",
+            "id": "ind_Latn",
+            "it": "ita_Latn",
+            "ja": "jpn_Jpan",
+            "ko": "kor_Hang",
+            "pt": "por_Latn",
+            "ru": "rus_Cyrl",
+            "th": "tha_Thai",
+            "vi": "vie_Latn",
+            "zh": "zho_Hans",
+        }
+        return mapping.get((lang or "").strip().lower(), "eng_Latn")
 
     def _load_nllb(self):
         """Lazy load NLLB model."""
@@ -64,15 +85,18 @@ class TranslateService:
     def _translate_nllb(self, text: str, source_lang: str) -> str:
         """Translate using local NLLB model."""
         self._load_nllb()
-        # Note: source_lang mapping might be needed for NLLB codes (e.g., 'en' -> 'eng_Latn')
         inputs = self.nllb_tokenizer(text, return_tensors="pt")
+        target_lang_code = self._nllb_lang_code(self.target_lang)
         translated_tokens = self.nllb_model.generate(
-            **inputs, forced_bos_token_id=self.nllb_tokenizer.lang_code_to_id[f"{self.target_lang}_Latn"] # Simplified
+            **inputs,
+            forced_bos_token_id=self.nllb_tokenizer.lang_code_to_id[target_lang_code],
         )
         return self.nllb_tokenizer.batch_decode(translated_tokens, skip_special_tokens=True)[0]
 
     def translate_batch(self, segments: List[Dict[str, Any]], max_workers: int = 5) -> List[Dict[str, Any]]:
         """Translate a list of segments in parallel."""
+        if self.service_type == "nllb":
+            max_workers = 1
         logger.info(f"Translating {len(segments)} segments using {self.service_type}")
         
         def translate_item(item):

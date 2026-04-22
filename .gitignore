@@ -157,17 +157,22 @@ third_party/
 storage/input/*
 storage/temp/*
 storage/output/*
+storage/logs/*
+storage/jobs.json
 !storage/input/.gitkeep
 !storage/temp/.gitkeep
 !storage/output/.gitkeep
+!storage/logs/.gitkeep
 
 # Models
 models/whisper/*
 models/tts/*
 models/translation/*
+models/piper/*
 !models/whisper/.gitkeep
 !models/tts/.gitkeep
 !models/translation/.gitkeep
+!models/piper/.gitkeep
 
 # OS generated files
 .DS_Store
@@ -179,3 +184,9 @@ ehthumbs.db
 Thumbs.db
 
 node_modules/
+.vscode/
+.kiro/
+
+# Local test/media artifacts
+backend/test_*.mp3
+backend/test_*.wav

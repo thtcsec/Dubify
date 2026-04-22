@@ -1,11 +1,11 @@
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
-import { HelpCircle, ExternalLink, Mail, MessageSquare, BookOpen } from 'lucide-react';
+import { Card, CardContent } from '@/components/ui/card';
+import { ExternalLink, Mail, MessageSquare, BookOpen } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 
 export function HelpView() {
   const faqs = [
     { q: "What video formats are supported?", a: "Dubify supports MP4, MOV, and AVI up to 500MB." },
-    { q: "Which platforms can I import from?", a: "YouTube, Twitter (X), Douyin, and Google Drive (Public links)." },
+    { q: "Which platforms can I import from?", a: "YouTube, Bilibili, Twitter (X), Douyin, and Google Drive (public links)." },
     { q: "How long does dubbing take?", a: "Usually 3-5 minutes for a 5-minute video, depending on server load." },
     { q: "Can I use my own API keys?", a: "Yes, you can configure OpenAI or Anthropic keys in Settings." },
   ];

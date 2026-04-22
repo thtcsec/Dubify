@@ -87,6 +87,7 @@ class VideoService:
                 command = [
                     "ffmpeg", "-y", "-i", str(video_path), "-i", str(audio_path),
                     "-vf", filter_str,
+                    "-af", "apad",
                     "-c:v", "libx264", "-preset", "fast", "-crf", "23",
                     "-c:a", "aac", "-b:a", "192k",
                     "-map", "0:v:0", "-map", "1:a:0",
@@ -95,6 +96,7 @@ class VideoService:
             else:
                 command = [
                     "ffmpeg", "-y", "-i", str(video_path), "-i", str(audio_path),
+                    "-af", "apad",
                     "-c:v", "copy", "-map", "0:v:0", "-map", "1:a:0",
                     "-shortest", str(output_path)
                 ]
@@ -102,6 +104,45 @@ class VideoService:
             return True
         except subprocess.CalledProcessError as e:
             logger.error(f"Merging error: {e.stderr.decode()}")
+            return False
+
+    @staticmethod
+    def image_audio_to_video(image_path: Path, audio_path: Path, output_path: Path, srt_path: Optional[Path] = None, font_size: int = 24) -> bool:
+        """Create a looping video from a static image and audio, natively burning subtitles."""
+        try:
+            logger.info(f"Generating Studio video from {image_path} and {audio_path}")
+            
+            # Base command loops image and matches audio duration
+            command = [
+                "ffmpeg", "-y", 
+                "-loop", "1", "-i", str(image_path),
+                "-i", str(audio_path)
+            ]
+            
+            if srt_path and srt_path.exists():
+                escaped_srt = str(srt_path).replace("\\", "\\\\").replace("'", "\\'")
+                # High-impact TikTok style: Bold yellow text, thick outline and shadow
+                filter_str = (
+                    f"scale=-2:1080,pad=ceil(iw/2)*2:ceil(ih/2)*2," # Ensure even dimensions for libx264
+                    f"subtitles='{escaped_srt}':force_style='FontName=Impact,FontSize={font_size},"
+                    f"PrimaryColour=&H0000FFFF,SecondaryColour=&H000000FF,OutlineColour=&H00000000,"
+                    f"BackColour=&H80000000,Bold=-1,Italic=0,Alignment=2,MarginV=120,Outline=3,Shadow=2'"
+                )
+                command.extend(["-vf", filter_str])
+            else:
+                command.extend(["-vf", "scale=-2:1080,pad=ceil(iw/2)*2:ceil(ih/2)*2"])
+
+            command.extend([
+                "-c:v", "libx264", "-tune", "stillimage", "-preset", "fast", "-crf", "23",
+                "-c:a", "aac", "-b:a", "192k",
+                "-shortest", "-pix_fmt", "yuv420p",
+                str(output_path)
+            ])
+            
+            subprocess.run(command, check=True, stdout=subprocess.DEVNULL, stderr=subprocess.PIPE)
+            return True
+        except subprocess.CalledProcessError as e:
+            logger.error(f"Studio generation error: {e.stderr.decode()}")
             return False
 
     @staticmethod
@@ -117,4 +158,18 @@ class VideoService:
             return True
         except subprocess.CalledProcessError as e:
             logger.error(f"Concat error: {e.stderr.decode()}")
+            return False
+
+    @staticmethod
+    def create_silence(duration: float, output_path: Path, sample_rate: int = 16000) -> bool:
+        """Generate a silent audio file of specific duration."""
+        try:
+            command = [
+                "ffmpeg", "-y", "-f", "lavfi", "-i", f"anullsrc=r={sample_rate}:cl=mono",
+                "-t", str(duration), str(output_path)
+            ]
+            subprocess.run(command, check=True, stdout=subprocess.DEVNULL, stderr=subprocess.PIPE)
+            return True
+        except subprocess.CalledProcessError as e:
+            logger.error(f"Silence generation error: {e.stderr.decode()}")
             return False

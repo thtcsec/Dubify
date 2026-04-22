@@ -1,4 +1,4 @@
-import { Upload, Link as LinkIcon, Info, Play, Trash2 } from 'lucide-react';
+import { Upload, Link as LinkIcon, Info, Trash2 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
@@ -11,7 +11,12 @@ interface VideoSourceSectionProps {
   setFile: (file: File | null) => void;
   videoUrl: string;
   setVideoUrl: (url: string) => void;
-  videoInfo: any;
+  videoInfo: {
+    title: string;
+    duration: number;
+    thumbnail?: string | null;
+    source?: string | null;
+  } | null;
   isLoading: boolean;
   onFetchInfo: () => void;
 }
@@ -66,7 +71,7 @@ export function VideoSourceSection({
             <Label className="text-slate-400">Enter Video URL</Label>
             <div className="flex gap-2">
               <Input 
-                placeholder="https://youtube.com/watch?v=..." 
+                placeholder="https://youtube.com/... | https://www.bilibili.com/video/BV... | https://drive.google.com/..." 
                 className="bg-white/5 border-white/10 h-12 flex-1"
                 value={videoUrl}
                 onChange={(e) => setVideoUrl(e.target.value)}

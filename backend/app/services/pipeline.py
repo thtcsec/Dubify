@@ -61,7 +61,7 @@ class DubbingPipeline:
             
             # 6. Merge Back & Burn Subtitles
             logger.info("Step 5/5: Merging results and burning subtitles...")
-            self.tts_service.create_concat_list(audio_segments, translated_segments, concat_list_path)
+            self.tts_service.create_concat_list(audio_segments, translated_segments, concat_list_path, session_dir)
             
             if not self.video_service.concat_audio_segments(concat_list_path, final_audio):
                 raise Exception("Failed to concatenate audio segments")
