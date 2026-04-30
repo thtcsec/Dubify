@@ -1,6 +1,5 @@
 import logging
 import asyncio
-import edge_tts
 import tempfile
 import threading
 import wave

@@ -18,6 +18,8 @@ class LLMService:
             return "openai", settings.OPENAI_API_KEY
         if settings.GEMINI_API_KEY:
             return "gemini", settings.GEMINI_API_KEY
+        if settings.ANTHROPIC_API_KEY:
+            return "anthropic", settings.ANTHROPIC_API_KEY
         return "none", ""
 
     @staticmethod
@@ -49,6 +51,8 @@ class LLMService:
                 return LLMService._call_openai(api_key, system_prompt, raw_text)
             elif provider == "gemini":
                 return LLMService._call_gemini(api_key, system_prompt, raw_text)
+            elif provider == "anthropic":
+                return LLMService._call_anthropic(api_key, system_prompt, raw_text)
         except Exception as e:
             logger.error(f"LLM ({provider}) failed: {e}")
             return raw_text.strip()
@@ -89,6 +93,8 @@ class LLMService:
                 return LLMService._call_openai(api_key, system_prompt, cleaned_prompt)
             if provider == "gemini":
                 return LLMService._call_gemini(api_key, system_prompt, cleaned_prompt)
+            if provider == "anthropic":
+                return LLMService._call_anthropic(api_key, system_prompt, cleaned_prompt)
         except Exception as e:
             logger.error(f"LLM ({provider}) failed for shorts: {e}")
             return LLMService._fallback_short_script(cleaned_prompt, target_lang)
@@ -169,3 +175,24 @@ class LLMService:
         )
         response.raise_for_status()
         return response.json()["candidates"][0]["content"]["parts"][0]["text"].strip()
+
+    @staticmethod
+    def _call_anthropic(api_key: str, system_prompt: str, user_text: str) -> str:
+        logger.info("Calling Anthropic API...")
+        response = requests.post(
+            "https://api.anthropic.com/v1/messages",
+            headers={
+                "x-api-key": api_key,
+                "anthropic-version": "2023-06-01",
+                "Content-Type": "application/json",
+            },
+            json={
+                "model": "claude-sonnet-4-20250514",
+                "max_tokens": 1000,
+                "system": system_prompt,
+                "messages": [{"role": "user", "content": user_text}],
+            },
+            timeout=30,
+        )
+        response.raise_for_status()
+        return response.json()["content"][0]["text"].strip()

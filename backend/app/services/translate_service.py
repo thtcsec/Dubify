@@ -105,9 +105,12 @@ class TranslateService:
         logger.info(f"Translating {len(segments)} segments using {self.service_type}")
         
         def translate_item(item):
-            # item is (index, segment)
             idx, seg = item
-            translated = self.translate_text(seg['text'])
+            try:
+                translated = self.translate_text(seg['text'])
+            except Exception as e:
+                logger.warning("Translation failed for segment %d, using original text: %s", idx, e)
+                translated = seg['text']
             return idx, {**seg, 'translated_text': translated}
 
         results = [None] * len(segments)
@@ -115,8 +118,13 @@ class TranslateService:
         with ThreadPoolExecutor(max_workers=max_workers) as executor:
             futures = {executor.submit(translate_item, (i, s)): i for i, s in enumerate(segments)}
             for future in as_completed(futures):
-                idx, result = future.result()
-                results[idx] = result
+                try:
+                    idx, result = future.result()
+                    results[idx] = result
+                except Exception as e:
+                    idx = futures[future]
+                    logger.error("Translation future failed for segment %d: %s", idx, e)
+                    results[idx] = {**segments[idx], 'translated_text': segments[idx]['text']}
                 completed += 1
                 if progress_callback:
                     progress_callback(completed, len(segments))

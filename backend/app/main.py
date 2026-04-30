@@ -9,6 +9,7 @@ from app.core.config import settings
 from app.core.logging import DubifyLogger
 from app.api.endpoints import router as api_router
 from app.core.worker import worker
+from app.core.jobs import job_manager
 
 # ─── Initialize Global Logging FIRST ────────────────────────────────────────
 DubifyLogger.setup(level="DEBUG" if settings.DEBUG else "INFO")
@@ -21,6 +22,7 @@ logger = logging.getLogger(__name__)
 async def lifespan(app: FastAPI):
     # Startup
     worker.start()
+    job_manager.cleanup_old_jobs(max_age_days=30)
     logger.info("Dubify started.")
     yield
     # Shutdown

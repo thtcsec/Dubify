@@ -206,34 +206,55 @@ class VideoService:
 
     @staticmethod
     def stretch_audio(input_file: Path, output_file: Path, target_duration: float) -> bool:
-        """Stretch or compress audio to match target duration using FFmpeg atempo."""
+        """Stretch or compress audio to match target duration using FFmpeg."""
         try:
             current_duration = VideoService.get_duration(input_file)
-            if current_duration <= 0:
+            if current_duration <= 0 or target_duration <= 0:
                 return False
 
             ratio = current_duration / target_duration
 
-            if target_duration <= 0:
-                return False
             if abs(ratio - 1.0) < 0.03:
                 shutil.copyfile(input_file, output_file)
                 return True
 
-            # FFmpeg atempo only supports 0.5 to 2.0, but Rubberband handles arbitrary values better
-            # Use rubberband filter if available, fallback to atempo if not (rubberband is much higher quality)
-            # FFmpeg standard command for rubberband: rubberband=tempo=X
+            # Try rubberband first (higher quality), fallback to atempo
             filter_str = f"rubberband=tempo={ratio:.4f}"
-            
+            command = [
+                "ffmpeg", "-y", "-i", str(input_file),
+                "-filter:a", filter_str,
+                str(output_file)
+            ]
+            result = subprocess.run(command, stdout=subprocess.DEVNULL, stderr=subprocess.PIPE)
+            if result.returncode == 0 and output_file.exists() and output_file.stat().st_size > 0:
+                return True
+
+            # Fallback: atempo filter (supports 0.5-100.0, chain for extreme values)
+            logger.info("Rubberband unavailable, falling back to atempo filter.")
+            atempo_filters = []
+            r = ratio
+            # atempo only supports 0.5 to 100.0 per filter, chain for values outside range
+            while r > 2.0:
+                atempo_filters.append("atempo=2.0")
+                r /= 2.0
+            while r < 0.5:
+                atempo_filters.append("atempo=0.5")
+                r /= 0.5
+            atempo_filters.append(f"atempo={r:.4f}")
+            filter_str = ",".join(atempo_filters)
+
             command = [
                 "ffmpeg", "-y", "-i", str(input_file),
                 "-filter:a", filter_str,
                 str(output_file)
             ]
             subprocess.run(command, check=True, stdout=subprocess.DEVNULL, stderr=subprocess.PIPE)
-            return True
+            return output_file.exists() and output_file.stat().st_size > 0
         except subprocess.CalledProcessError as e:
-            logger.error(f"Audio stretch error: {e.stderr.decode()}")
+            logger.error(f"Audio stretch error: {e.stderr.decode() if e.stderr else str(e)}")
+            return False
+        except Exception as e:
+            logger.error(f"Audio stretch error: {e}")
             return False
 
     @staticmethod

@@ -14,7 +14,7 @@ import json
 MAX_IMAGE_SIZE = 20 * 1024 * 1024  # 20 MB
 MAX_TEXT_LENGTH = 50_000  # characters
 MAX_UPLOAD_SIZE = 2 * 1024 * 1024 * 1024  # 2 GB
-ALLOWED_ASPECT_RATIOS = {"16:9", "9:16", "4:3", "1:1"}
+ALLOWED_ASPECT_RATIOS = {"16:9", "9:16", "4:3", "3:4", "1:1"}
 ALLOWED_VIDEO_ENGINES = {"local", "veo3", "kling", "minimax", "seedance"}
 
 from app.core.config import settings
@@ -256,10 +256,19 @@ async def stream_job_events():
                     yield f"event: {event['type']}\ndata: {json.dumps(event, ensure_ascii=False)}\n\n"
                 except Exception:
                     yield "event: heartbeat\ndata: {}\n\n"
+        except GeneratorExit:
+            pass
         finally:
             job_manager.unsubscribe(subscriber)
 
-    return StreamingResponse(event_stream(), media_type="text/event-stream")
+    return StreamingResponse(
+        event_stream(),
+        media_type="text/event-stream",
+        headers={
+            "Cache-Control": "no-cache",
+            "X-Accel-Buffering": "no",
+        },
+    )
 
 
 @router.get("/jobs")
@@ -346,6 +355,19 @@ async def resume_job(job_id: str):
         raise HTTPException(status_code=400, detail=f"Cannot resume job with status: {job['status']}")
     logger.info(f"Job {job_id} resumed by user.")
     return {"status": "resumed", "job_id": job_id}
+
+
+@router.delete("/jobs/{job_id}")
+async def delete_job(job_id: str):
+    """Delete a completed/failed/cancelled job from history."""
+    job = job_manager.get_job(job_id)
+    if not job:
+        raise HTTPException(status_code=404, detail="Job not found")
+    if job["status"] in (JobStatus.PROCESSING, JobStatus.PENDING, JobStatus.PAUSED):
+        raise HTTPException(status_code=400, detail="Cannot delete an active job. Cancel it first.")
+    job_manager.delete_job(job_id)
+    logger.info(f"Job {job_id} deleted by user.")
+    return {"status": "deleted", "job_id": job_id}
 
 
 # ─── Voice Catalog ──────────────────────────────────────────────────────────

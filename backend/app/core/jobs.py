@@ -331,6 +331,18 @@ class JobManager:
                 self._save()
                 logger.info(f"Cleaned up {len(to_remove)} old jobs.")
 
+    def delete_job(self, job_id: str) -> bool:
+        """Delete a single job from history."""
+        with self._lock:
+            if job_id not in self.jobs:
+                return False
+            del self.jobs[job_id]
+            self._cancel_events.pop(job_id, None)
+            self._pause_events.pop(job_id, None)
+            self._save()
+            self._emit_event("deleted", job_id)
+        return True
+
 
 # Global singleton
 job_manager = JobManager()

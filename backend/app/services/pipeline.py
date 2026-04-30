@@ -1,5 +1,6 @@
 import logging
 import asyncio
+import subprocess
 from pathlib import Path
 from typing import Dict, Any, Optional
 from app.core.config import settings
@@ -54,11 +55,13 @@ class DubbingPipeline:
             # 3. Transcribe & Merge
             logger.info("Step 2/5: Transcribing...")
             raw_segments = self.asr_service.transcribe(asr_input_audio)
+            if not raw_segments:
+                raise Exception("Transcription returned no segments. The audio may be silent or corrupted.")
             merged_segments = self.asr_service.merge_segments_by_sentence(raw_segments)
             self.asr_service.save_transcript(merged_segments, transcript_path)
 
             # 4. Translate
-            logger.info(f"Step 3/5: Translating to {self.target_lang}...")
+            logger.info("Step 3/5: Translating %d segments to %s...", len(merged_segments), self.target_lang)
             translated_segments = self.translate_service.translate_batch(merged_segments)
 
             # Extract audio slices for voice cloning if F5-TTS is enabled
@@ -70,13 +73,11 @@ class DubbingPipeline:
                     slice_path = slices_dir / f"slice_{i}.wav"
                     start_str = str(seg['start'])
                     duration_str = str(seg['end'] - seg['start'])
-                    # Cut audio slice
                     cut_cmd = [
                         "ffmpeg", "-y", "-ss", start_str, "-t", duration_str,
                         "-i", str(asr_input_audio), "-c", "copy", str(slice_path)
                     ]
-                    import subprocess
-                    subprocess.run(cut_cmd, stdout=subprocess.DEVNULL, stderr=subprocess.PIPE)
+                    subprocess.run(cut_cmd, stdout=subprocess.DEVNULL, stderr=subprocess.PIPE, timeout=30)
                     if slice_path.exists():
                         seg['ref_audio'] = str(slice_path)
             
@@ -105,26 +106,24 @@ class DubbingPipeline:
             if bgm_audio:
                 logger.info("Mixing BGM with dubbed audio...")
                 mixed_audio = session_dir / "dubbed_audio_with_bgm.wav"
-                # amix filter mixes inputs. If they have different lengths, we keep the shortest or longest.
                 mix_cmd = [
                     "ffmpeg", "-y", "-i", str(final_audio), "-i", str(bgm_audio),
                     "-filter_complex", "amix=inputs=2:duration=first:dropout_transition=3",
                     str(mixed_audio)
                 ]
-                import subprocess
-                subprocess.run(mix_cmd, check=True, stdout=subprocess.DEVNULL, stderr=subprocess.PIPE)
-                if mixed_audio.exists():
+                try:
+                    subprocess.run(mix_cmd, check=True, stdout=subprocess.DEVNULL, stderr=subprocess.PIPE, timeout=120)
+                except subprocess.CalledProcessError as e:
+                    logger.warning("BGM mixing failed: %s. Continuing without BGM.", e.stderr.decode() if e.stderr else str(e))
+                if mixed_audio.exists() and mixed_audio.stat().st_size > 0:
                     final_audio_with_bgm = mixed_audio
             
             if not self.video_service.merge_audio_video(video_path, final_audio_with_bgm, output_video, srt_path):
                 raise Exception("Failed to merge audio and video")
 
-            logger.info(f"Pipeline completed successfully! Output: {output_video}")
+            logger.info("Pipeline completed successfully! Output: %s", output_video)
             return output_video
 
         except Exception as e:
-            logger.error(f"Pipeline failed for session {session_id}: {e}")
+            logger.error("Pipeline failed for session %s: %s", session_id, e, exc_info=True)
             return None
-        finally:
-            # Optional: cleanup session_dir
-            pass
