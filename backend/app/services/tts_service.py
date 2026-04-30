@@ -4,11 +4,14 @@ import edge_tts
 import tempfile
 import threading
 import wave
+import re
+import unicodedata
 from pathlib import Path
-from typing import List, Dict, Any, Optional, Tuple
+from typing import List, Dict, Any, Optional, Tuple, Callable
 from piper import PiperVoice
 from app.core.config import settings
 from app.services.video_service import VideoService
+from app.services.f5_tts_service import F5TTSService
 
 logger = logging.getLogger(__name__)
 
@@ -16,10 +19,12 @@ class TTSService:
     _piper_cache: dict[str, PiperVoice] = {}
     _piper_lock = threading.Lock()
 
-    def __init__(self, voice: str = "vi-VN-HoaiMyNeural", rate: str = "+0%", pitch: str = "+0Hz"):
+    def __init__(self, voice: str = "vi-VN-HoaiMyNeural", rate: str = "+0%", pitch: str = "+0Hz", provider: str = "edge"):
         self.voice = voice
         self.rate = rate
         self.pitch = pitch
+        self.provider = provider
+        self.f5_service = F5TTSService()
 
     def _use_local_tts(self) -> bool:
         return not settings.allow_network_tts()
@@ -125,8 +130,52 @@ class TTSService:
 
         output_path.parent.mkdir(parents=True, exist_ok=True)
         with wave.open(str(output_path), "wb") as wav_file:
-            self._load_piper_voice(model_path).synthesize_wav(text, wav_file)
+            normalized_text = self._normalize_local_tts_text(text)
+            self._load_piper_voice(model_path).synthesize_wav(normalized_text, wav_file)
         return output_path.exists() and output_path.stat().st_size > 0
+
+    def _normalize_local_tts_text(self, text: str) -> str:
+        normalized = unicodedata.normalize("NFKC", text or "")
+        normalized = normalized.replace("\r", " ").replace("\n", ". ")
+        normalized = re.sub(r"https?://\S+", " ", normalized)
+        normalized = re.sub(r"\bwww\.\S+\b", " ", normalized)
+        normalized = normalized.replace("&", " và ")
+        normalized = normalized.replace("%", " phần trăm ")
+        normalized = normalized.replace("@", " a còng ")
+
+        locale = self._voice_locale(self.voice) or ""
+        if locale.startswith("vi_"):
+            digit_map = {
+                "0": " không ",
+                "1": " một ",
+                "2": " hai ",
+                "3": " ba ",
+                "4": " bốn ",
+                "5": " năm ",
+                "6": " sáu ",
+                "7": " bảy ",
+                "8": " tám ",
+                "9": " chín ",
+            }
+        else:
+            digit_map = {
+                "0": " zero ",
+                "1": " one ",
+                "2": " two ",
+                "3": " three ",
+                "4": " four ",
+                "5": " five ",
+                "6": " six ",
+                "7": " seven ",
+                "8": " eight ",
+                "9": " nine ",
+            }
+
+        normalized = "".join(digit_map.get(char, char) for char in normalized)
+        normalized = "".join(char for char in normalized if unicodedata.category(char) != "Mn")
+        normalized = re.sub(r"[^\w\s,.!?;:()/%-]", " ", normalized, flags=re.UNICODE)
+        normalized = re.sub(r"\s+", " ", normalized).strip()
+        return normalized or "..."
 
     def _generate_local_audio_sync(self, text: str, output_path: Path) -> bool:
         import pythoncom
@@ -214,11 +263,14 @@ class TTSService:
     async def _generate_local_audio(self, text: str, output_path: Path) -> bool:
         return await asyncio.to_thread(self._generate_local_audio_sync, text, output_path)
 
-    async def generate_audio(self, text: str, output_path: Path, retries: int = 3) -> bool:
-        """Generate audio for a single text string using the active TTS backend."""
+    async def generate_audio(self, text: str, output_path: Path, ref_audio_path: Optional[Path] = None, ref_text: Optional[str] = None, retries: int = 3) -> bool:
+        """Generate audio for a single text string using Edge-TTS or F5-TTS with retries."""
         if not text.strip():
             logger.warning("Empty text passed to TTS, skipping.")
             return False
+            
+        if self.provider == "f5tts" and self.f5_service.is_available() and ref_audio_path and ref_text:
+            return await self.f5_service.clone_voice(ref_audio_path, ref_text, text, output_path)
 
         if self._use_local_tts():
             try:
@@ -227,57 +279,109 @@ class TTSService:
                 logger.error(f"Local TTS failed: {e}")
                 return False
 
+        # Use subprocess to avoid uvicorn event loop conflicts on Windows
         for attempt in range(retries):
             try:
-                communicate = edge_tts.Communicate(text, self.voice, rate=self.rate, pitch=self.pitch)
-                await communicate.save(str(output_path))
-                if output_path.exists() and output_path.stat().st_size > 0:
+                success = await self._edge_tts_subprocess(text, self.voice, output_path)
+                if success:
                     return True
                 logger.warning(f"TTS attempt {attempt + 1} produced empty file for: {text[:50]}...")
             except Exception as e:
                 logger.error(f"Edge-TTS attempt {attempt + 1} failed: {e}")
                 if attempt < retries - 1:
-                    await asyncio.sleep(1) # Wait before retry
+                    await asyncio.sleep(1)
         
         return False
 
     async def generate_audio_with_subtitles(self, text: str, target_lang: str, job_id: str) -> Tuple[Path, Path]:
         """Generate audio and subtitles using the active TTS backend."""
-        try:
-            if self._use_local_tts():
-                audio_path = settings.TEMP_DIR / f"{job_id}_tts.wav"
-                srt_path = settings.TEMP_DIR / f"{job_id}_tts.vtt"
-                success = await self._generate_local_audio(text, audio_path)
-                if not success:
-                    raise RuntimeError("Local TTS could not generate audio.")
-                self._write_basic_vtt(text, audio_path, srt_path)
-                return audio_path, srt_path
-
-            # Use the voice set in the constructor (which comes from the user's selection)
-            active_voice = self.voice
-            
-            communicate = edge_tts.Communicate(text, active_voice, rate=self.rate, pitch=self.pitch)
-            submaker = edge_tts.SubMaker()
-            
-            audio_path = settings.TEMP_DIR / f"{job_id}_tts.mp3"
+        if self._use_local_tts():
+            audio_path = settings.TEMP_DIR / f"{job_id}_tts.wav"
             srt_path = settings.TEMP_DIR / f"{job_id}_tts.vtt"
-            
-            with open(audio_path, "wb") as audio_file:
-                async for chunk in communicate.stream():
-                    if chunk["type"] == "audio":
-                        audio_file.write(chunk["data"])
-                    elif chunk["type"] == "WordBoundary":
-                        submaker.create_sub((chunk["offset"], chunk["duration"]), chunk["text"])
-            
-            with open(srt_path, "w", encoding="utf-8") as srt_file:
-                srt_file.write(submaker.generate_subs())
-                
+            success = await self._generate_local_audio(text, audio_path)
+            if not success:
+                raise RuntimeError("Local TTS could not generate audio.")
+            self._write_basic_vtt(text, audio_path, srt_path)
+            return audio_path, srt_path
+
+        audio_path = settings.TEMP_DIR / f"{job_id}_tts.mp3"
+        srt_path = settings.TEMP_DIR / f"{job_id}_tts.vtt"
+
+        try:
+            # Use subprocess for edge-tts to avoid event loop conflicts
+            success = await self._edge_tts_subprocess(text, self.voice, audio_path, srt_path)
+            if not success:
+                raise RuntimeError("Edge-TTS subprocess produced no audio.")
             return audio_path, srt_path
         except Exception as e:
-            logger.error(f"Edge-TTS Subtitle Gen error: {e}")
-            raise e
+            logger.warning("Edge-TTS subtitle generation failed, falling back to local TTS: %s", e)
+            fallback_audio = settings.TEMP_DIR / f"{job_id}_tts.wav"
+            fallback_srt = settings.TEMP_DIR / f"{job_id}_tts.vtt"
+            success = await self._generate_local_audio(text, fallback_audio)
+            if not success:
+                logger.error("Edge-TTS Subtitle Gen error: %s", e)
+                raise RuntimeError(f"Could not generate audio via Edge-TTS or local fallback: {e}") from e
+            self._write_basic_vtt(text, fallback_audio, fallback_srt)
+            return fallback_audio, fallback_srt
 
-    async def process_segments(self, segments: List[Dict[str, Any]], temp_dir: Path, max_concurrency: int = 5) -> List[Path]:
+    @staticmethod
+    async def _edge_tts_subprocess(
+        text: str,
+        voice: str,
+        audio_path: Path,
+        subtitle_path: Optional[Path] = None,
+    ) -> bool:
+        """Run edge-tts via CLI subprocess to avoid uvicorn event loop conflicts on Windows."""
+        import sys
+        import tempfile
+
+        # Write text to a temp file to handle Unicode and long texts safely
+        with tempfile.NamedTemporaryFile("w", suffix=".txt", delete=False, encoding="utf-8") as tf:
+            tf.write(text)
+            text_file = Path(tf.name)
+
+        try:
+            args = [
+                sys.executable, "-m", "edge_tts",
+                "--voice", voice,
+                "--file", str(text_file),
+                "--write-media", str(audio_path),
+            ]
+            if subtitle_path:
+                args.extend(["--write-subtitles", str(subtitle_path)])
+
+            proc = await asyncio.create_subprocess_exec(
+                *args,
+                stdout=asyncio.subprocess.PIPE,
+                stderr=asyncio.subprocess.PIPE,
+            )
+            try:
+                stdout, stderr = await asyncio.wait_for(proc.communicate(), timeout=60)
+            except asyncio.TimeoutError:
+                proc.kill()
+                await proc.communicate()
+                logger.error("Edge-TTS CLI timed out after 60s")
+                raise RuntimeError("Edge-TTS timed out")
+
+            if proc.returncode != 0:
+                err = stderr.decode(errors="replace").strip()
+                logger.error(f"Edge-TTS CLI failed: {err}")
+                raise RuntimeError(f"Edge-TTS CLI error: {err}")
+
+            if not audio_path.exists() or audio_path.stat().st_size == 0:
+                return False
+
+            return True
+        finally:
+            text_file.unlink(missing_ok=True)
+
+    async def process_segments(
+        self,
+        segments: List[Dict[str, Any]],
+        temp_dir: Path,
+        max_concurrency: int = 5,
+        progress_callback: Optional[Callable[[int, int], None]] = None,
+    ) -> List[Path]:
         """
         Generate audio for all segments in parallel and align them with original timing.
         Returns list of paths to final aligned audio segments (1:1 mapping with input).
@@ -289,6 +393,9 @@ class TTSService:
         
         semaphore = asyncio.Semaphore(max_concurrency)
         
+        completed_count = 0
+        completed_lock = asyncio.Lock()
+
         async def process_single_segment(i: int, seg: Dict[str, Any]) -> Path:
             async with semaphore:
                 text = seg.get('translated_text', seg['text'])
@@ -299,7 +406,11 @@ class TTSService:
                 aligned_path = temp_dir / f"tts_{i}_aligned.wav"
                 
                 # 1. Generate Raw TTS
-                success = await self.generate_audio(text, raw_path)
+                # Extract ref_audio and ref_text for voice cloning if they exist in the segment dict
+                ref_audio = Path(seg['ref_audio']) if 'ref_audio' in seg and seg['ref_audio'] else None
+                ref_text = seg.get('text', '')
+                
+                success = await self.generate_audio(text, raw_path, ref_audio_path=ref_audio, ref_text=ref_text)
                 
                 if success:
                     # 2. Time-stretch to match original duration
@@ -315,7 +426,17 @@ class TTSService:
                 VideoService.create_silence(target_duration, aligned_path)
                 return aligned_path
 
-        tasks = [process_single_segment(i, seg) for i, seg in enumerate(segments)]
+        async def wrap_segment(i: int, seg: Dict[str, Any]) -> Path:
+            nonlocal completed_count
+            path = await process_single_segment(i, seg)
+            async with completed_lock:
+                if path.exists():
+                    completed_count += 1
+                    if progress_callback:
+                        progress_callback(completed_count, len(segments))
+            return path
+
+        tasks = [wrap_segment(i, seg) for i, seg in enumerate(segments)]
         results = await asyncio.gather(*tasks)
         
         logger.info(f"TTS generation complete. Processed {len(results)} segments.")
