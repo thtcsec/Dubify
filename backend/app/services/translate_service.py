@@ -1,6 +1,6 @@
 import logging
 import requests
-from typing import List, Dict, Any, Optional
+from typing import List, Dict, Any, Optional, Callable
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from deep_translator import GoogleTranslator
 from app.core.config import settings
@@ -93,7 +93,12 @@ class TranslateService:
         )
         return self.nllb_tokenizer.batch_decode(translated_tokens, skip_special_tokens=True)[0]
 
-    def translate_batch(self, segments: List[Dict[str, Any]], max_workers: int = 5) -> List[Dict[str, Any]]:
+    def translate_batch(
+        self,
+        segments: List[Dict[str, Any]],
+        max_workers: int = 5,
+        progress_callback: Optional[Callable[[int, int], None]] = None,
+    ) -> List[Dict[str, Any]]:
         """Translate a list of segments in parallel."""
         if self.service_type == "nllb":
             max_workers = 1
@@ -106,10 +111,14 @@ class TranslateService:
             return idx, {**seg, 'translated_text': translated}
 
         results = [None] * len(segments)
+        completed = 0
         with ThreadPoolExecutor(max_workers=max_workers) as executor:
             futures = {executor.submit(translate_item, (i, s)): i for i, s in enumerate(segments)}
             for future in as_completed(futures):
                 idx, result = future.result()
                 results[idx] = result
+                completed += 1
+                if progress_callback:
+                    progress_callback(completed, len(segments))
                 
         return [r for r in results if r is not None]

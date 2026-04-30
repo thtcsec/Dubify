@@ -37,7 +37,7 @@ class VideoService:
         cleaned = value.lstrip("#")
         if len(cleaned) != 6:
             return (12, 18, 38)
-        return tuple(int(cleaned[i:i + 2], 16) for i in (0, 2, 4))
+        return (int(cleaned[0:2], 16), int(cleaned[2:4], 16), int(cleaned[4:6], 16))
 
     @staticmethod
     def create_gradient_background(

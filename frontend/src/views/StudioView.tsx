@@ -5,8 +5,8 @@ import { Label } from '../components/ui/label';
 import { Textarea } from '../components/ui/textarea';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '../components/ui/select';
 import { DubbingProgress } from '../components/DubbingProgress';
+import { isTimeoutError, extractApiErrorMessage } from '../lib/errors';
 import api from '../lib/api';
-import type { AxiosError } from 'axios';
 
 interface Voice {
   id: string;
@@ -15,31 +15,13 @@ interface Voice {
   gender: string;
 }
 
-function isTimeoutError(error: unknown): boolean {
-  const axiosError = error as AxiosError;
-  return axiosError.code === 'ECONNABORTED' || String(axiosError.message).includes('timeout');
-}
-
-function extractApiErrorMessage(error: unknown, fallback: string): string {
-  const axiosError = error as AxiosError<{ detail?: unknown }>;
-  const detail = axiosError.response?.data?.detail;
-
-  if (typeof detail === 'string' && detail.trim()) {
-    return detail;
-  }
-
-  if (detail && typeof detail === 'object') {
-    const payload = detail as { message?: string; hints?: string[] };
-    if (payload.message && Array.isArray(payload.hints) && payload.hints.length > 0) {
-      return `${payload.message} ${payload.hints.join(' ')}`;
-    }
-    if (payload.message) {
-      return payload.message;
-    }
-  }
-
-  return fallback;
-}
+const ASPECT_RATIO_OPTIONS = [
+  { value: '16:9', label: '16:9 Landscape' },
+  { value: '4:3', label: '4:3 Classic' },
+  { value: '9:16', label: '9:16 Vertical' },
+  { value: '3:4', label: '3:4 Portrait' },
+  { value: '1:1', label: '1:1 Square' },
+];
 
 interface StudioViewProps {
   targetLang: string;
@@ -54,6 +36,9 @@ export function StudioView({ targetLang, setTargetLang }: StudioViewProps) {
   const [newsText, setNewsText] = useState('');
   const [imageFile, setImageFile] = useState<File | null>(null);
   const [imagePreview, setImagePreview] = useState<string>('');
+  const [imageUrl, setImageUrl] = useState<string | null>(null);
+  const [isDragOver, setIsDragOver] = useState(false);
+  const [aspectRatio, setAspectRatio] = useState('16:9');
   
   // Voice
   const [voices, setVoices] = useState<Voice[]>([]);
@@ -97,14 +82,68 @@ export function StudioView({ targetLang, setTargetLang }: StudioViewProps) {
 
   const handleImageUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
     if (e.target.files && e.target.files.length > 0) {
-      const file = e.target.files[0];
-      setImageFile(file);
-      setImagePreview(URL.createObjectURL(file));
+      applyImageFile(e.target.files[0]);
     }
   };
 
+  const applyImageFile = (file: File) => {
+    setImageFile(file);
+    setImageUrl(null);
+    setImagePreview(URL.createObjectURL(file));
+    setError(null);
+  };
+
+  const applyRemoteImage = (url: string) => {
+    setImageFile(null);
+    setImageUrl(url);
+    setImagePreview(url);
+    setError(null);
+  };
+
+  const tryExtractImageUrl = (dataTransfer: DataTransfer): string | null => {
+    const uriList = dataTransfer.getData('text/uri-list');
+    if (uriList) {
+      const firstUrl = uriList.split('\n').map((item) => item.trim()).find((item) => item && !item.startsWith('#'));
+      if (firstUrl) return firstUrl;
+    }
+
+    const plainText = dataTransfer.getData('text/plain').trim();
+    if (/^https?:\/\//i.test(plainText)) {
+      return plainText;
+    }
+
+    const html = dataTransfer.getData('text/html');
+    if (html) {
+      const match = html.match(/<img[^>]+src=["']([^"']+)["']/i);
+      if (match?.[1]) {
+        return match[1];
+      }
+    }
+
+    return null;
+  };
+
+  const handleDrop = (event: React.DragEvent<HTMLDivElement>) => {
+    event.preventDefault();
+    setIsDragOver(false);
+
+    const file = Array.from(event.dataTransfer.files).find((item) => item.type.startsWith('image/'));
+    if (file) {
+      applyImageFile(file);
+      return;
+    }
+
+    const droppedUrl = tryExtractImageUrl(event.dataTransfer);
+    if (droppedUrl) {
+      applyRemoteImage(droppedUrl);
+      return;
+    }
+
+    setError('Please drop an image file or an online image URL.');
+  };
+
   const handleGenerate = async () => {
-    if (!newsText.trim() || !imageFile) {
+    if (!newsText.trim() || (!imageFile && !imageUrl)) {
         setError("Please provide both news text and a background image.");
         return;
     }
@@ -113,9 +152,15 @@ export function StudioView({ targetLang, setTargetLang }: StudioViewProps) {
     setError(null);
     const formData = new FormData();
     formData.append('text', newsText);
-    formData.append('image', imageFile);
+    if (imageFile) {
+      formData.append('image', imageFile);
+    }
+    if (imageUrl) {
+      formData.append('image_url', imageUrl);
+    }
     formData.append('target_lang', targetLang);
     formData.append('voice_id', selectedVoice);
+    formData.append('aspect_ratio', aspectRatio);
     if (manualDuration !== null && manualDuration > 0) {
       formData.append('duration_seconds', String(manualDuration));
     }
@@ -138,7 +183,9 @@ export function StudioView({ targetLang, setTargetLang }: StudioViewProps) {
     setJobId(null);
     setNewsText('');
     setImageFile(null);
+    setImageUrl(null);
     setImagePreview('');
+    setAspectRatio('16:9');
     setError(null);
     setManualDuration(null);
     if (audioRef.current) audioRef.current.pause();
@@ -146,13 +193,19 @@ export function StudioView({ targetLang, setTargetLang }: StudioViewProps) {
 
   const filteredVoices = voices.filter(v => v.lang === targetLang || voices.length === 0);
   const displayVoices = filteredVoices.length > 0 ? filteredVoices : voices;
+  const previewAspectRatio = aspectRatio.replace(':', ' / ');
+  const previewFrameClass = aspectRatio === '9:16' || aspectRatio === '3:4'
+    ? 'max-w-[420px]'
+    : aspectRatio === '1:1'
+      ? 'max-w-[540px]'
+      : 'max-w-[760px]';
 
   return (
     <>
       {!jobId && (
         <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }}>
-           <h1 className="text-3xl font-bold mb-2">AI News Studio</h1>
-           <p className="text-slate-400 mb-8">Type your news snippet and upload a background to automatically generate an engaging anchor video.</p>
+           <h1 className="text-3xl font-bold mb-2">Script to Video</h1>
+           <p className="text-slate-400 mb-8">Turn a script and background into a narrated social video, with drag-drop image input, canvas ratio control, and auto caption overlays.</p>
         </motion.div>
       )}
 
@@ -195,26 +248,47 @@ export function StudioView({ targetLang, setTargetLang }: StudioViewProps) {
 
                   <div className="bg-slate-900/50 border border-slate-800 rounded-xl p-6">
                     <Label className="text-base font-semibold mb-3 block">2. Background Visual</Label>
-                    <div className="relative">
+                    <div
+                      className="relative"
+                      onDragOver={(event) => {
+                        event.preventDefault();
+                        setIsDragOver(true);
+                      }}
+                      onDragLeave={() => setIsDragOver(false)}
+                      onDrop={handleDrop}
+                    >
                         {imagePreview ? (
-                            <div className="relative w-full aspect-video rounded-lg overflow-hidden border border-slate-700 bg-slate-950">
+                            <div
+                              className={`relative mx-auto w-full rounded-lg overflow-hidden border bg-slate-950 ${previewFrameClass} ${isDragOver ? 'border-indigo-400 ring-2 ring-indigo-500/40' : 'border-slate-700'}`}
+                              style={{ aspectRatio: previewAspectRatio }}
+                            >
                                 <img src={imagePreview} alt="Background" className="w-full h-full object-cover opacity-80" />
                                 <div className="absolute inset-0 flex items-center justify-center bg-black/40 opacity-0 hover:opacity-100 transition-opacity">
-                                    <Label htmlFor="image-upload" className="cursor-pointer bg-white/10 hover:bg-white/20 backdrop-blur-md px-4 py-2 rounded-lg text-white font-medium transition-colors">
-                                        Change Image
-                                    </Label>
+                                    <div className="flex flex-col items-center gap-3">
+                                      <Label htmlFor="image-upload" className="cursor-pointer bg-white/10 hover:bg-white/20 backdrop-blur-md px-4 py-2 rounded-lg text-white font-medium transition-colors">
+                                          Change Image
+                                      </Label>
+                                      {imageUrl && (
+                                        <span className="max-w-[80%] truncate text-xs text-slate-200">
+                                          Remote image: {imageUrl}
+                                        </span>
+                                      )}
+                                    </div>
                                 </div>
                             </div>
                         ) : (
                             <Label 
                                 htmlFor="image-upload" 
-                                className="flex flex-col items-center justify-center w-full aspect-video border-2 border-dashed border-slate-800 rounded-lg bg-slate-950/50 hover:bg-slate-900/50 hover:border-indigo-500/50 transition-colors cursor-pointer group"
+                                className={`mx-auto flex w-full flex-col items-center justify-center border-2 border-dashed rounded-lg bg-slate-950/50 transition-colors cursor-pointer group ${previewFrameClass} ${
+                                  isDragOver ? 'border-indigo-400 bg-slate-900/80' : 'border-slate-800 hover:bg-slate-900/50 hover:border-indigo-500/50'
+                                }`}
+                                style={{ aspectRatio: previewAspectRatio }}
                             >
                                 <div className="p-4 bg-slate-800/50 rounded-full mb-4 text-slate-400 group-hover:text-indigo-400 transition-colors">
                                    <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z"></path></svg>
                                 </div>
-                                <span className="text-sm font-medium text-slate-300">Click to upload background image</span>
-                                <span className="text-xs text-slate-500 mt-1">PNG, JPG up to 10MB</span>
+                                <span className="text-sm font-medium text-slate-300">Click or drop a background image</span>
+                                <span className="text-xs text-slate-500 mt-1">PNG, JPG up to 10MB, or drag an image from another website</span>
                             </Label>
                         )}
                         <input id="image-upload" type="file" accept="image/*" className="hidden" onChange={handleImageUpload} />
@@ -293,6 +367,22 @@ export function StudioView({ targetLang, setTargetLang }: StudioViewProps) {
                                 )}
                               </Button>
                             </div>
+                        </div>
+
+                        <div className="space-y-2">
+                            <Label className="text-slate-400 text-xs uppercase tracking-wider">Canvas Ratio</Label>
+                            <Select value={aspectRatio} onValueChange={setAspectRatio}>
+                              <SelectTrigger className="w-full bg-slate-950 border-slate-800">
+                                <SelectValue placeholder="Select aspect ratio" />
+                              </SelectTrigger>
+                              <SelectContent className="bg-slate-900 border-slate-800">
+                                {ASPECT_RATIO_OPTIONS.map((option) => (
+                                  <SelectItem key={option.value} value={option.value}>
+                                    {option.label}
+                                  </SelectItem>
+                                ))}
+                              </SelectContent>
+                            </Select>
                         </div>
 
                         {/* Duration estimate — editable */}

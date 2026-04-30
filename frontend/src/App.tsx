@@ -1,12 +1,15 @@
 import { useState } from 'react';
-import type { AxiosError } from 'axios';
 import { motion, AnimatePresence } from 'framer-motion';
 import { AppSidebar } from './components/AppSidebar';
 import { DashboardHeader } from './components/dashboard/Header';
+import { ErrorBoundary } from './components/ErrorBoundary';
+import { isTimeoutError, extractApiErrorMessage } from './lib/errors';
 
 // Views
 import { DashboardView } from './views/DashboardView';
 import { StudioView } from './views/StudioView';
+import { StudioEditorView } from './views/StudioEditorView';
+import { ShortsView } from './views/ShortsView';
 import { ProjectsView } from './views/ProjectsView';
 import { HistoryView, SettingsView } from './views/ActivityViews';
 import { HelpView } from './views/HelpView';
@@ -19,32 +22,6 @@ interface VideoInfo {
   thumbnail?: string | null;
   source?: string | null;
   url?: string;
-}
-
-function isTimeoutError(error: unknown): boolean {
-  const axiosError = error as AxiosError;
-  return axiosError.code === 'ECONNABORTED' || String(axiosError.message).includes('timeout');
-}
-
-function extractApiErrorMessage(error: unknown, fallback: string): string {
-  const axiosError = error as AxiosError<{ detail?: unknown }>;
-  const detail = axiosError.response?.data?.detail;
-
-  if (typeof detail === 'string' && detail.trim()) {
-    return detail;
-  }
-
-  if (detail && typeof detail === 'object') {
-    const payload = detail as { message?: string; hints?: string[] };
-    if (payload.message && Array.isArray(payload.hints) && payload.hints.length > 0) {
-      return `${payload.message} ${payload.hints.join(' ')}`;
-    }
-    if (payload.message) {
-      return payload.message;
-    }
-  }
-
-  return fallback;
 }
 
 export default function App() {
@@ -144,6 +121,15 @@ export default function App() {
             setTargetLang={setTargetLang}
           />
         );
+      case 'shorts':
+        return (
+          <ShortsView
+            targetLang={targetLang}
+            setTargetLang={setTargetLang}
+          />
+        );
+      case 'editor':
+        return <StudioEditorView />;
       case 'projects':
         return <ProjectsView />;
       case 'history':
@@ -158,32 +144,36 @@ export default function App() {
   };
 
   return (
-    <div className="flex h-screen w-full bg-slate-950 overflow-hidden text-white">
-      <AppSidebar 
-        currentView={currentView} 
-        onViewChange={setCurrentView} 
-        isCollapsed={isSidebarCollapsed}
-        onToggleCollapse={() => setIsSidebarCollapsed(!isSidebarCollapsed)}
-      />
-      
-      <div className="flex-1 min-w-0 flex flex-col h-full bg-slate-950">
-        <DashboardHeader currentView={currentView} />
+    <ErrorBoundary>
+      <div className="flex h-screen w-full bg-slate-950 overflow-hidden text-white">
+        <AppSidebar 
+          currentView={currentView} 
+          onViewChange={setCurrentView} 
+          isCollapsed={isSidebarCollapsed}
+          onToggleCollapse={() => setIsSidebarCollapsed(!isSidebarCollapsed)}
+        />
+        
+        <div className="flex-1 min-w-0 flex flex-col h-full bg-slate-950">
+          <DashboardHeader currentView={currentView} />
 
-        <main className="flex-1 min-w-0 overflow-y-auto p-6 md:p-8">
-          <AnimatePresence mode="wait">
-            <motion.div
-              key={currentView}
-              initial={{ opacity: 0, scale: 0.98 }}
-              animate={{ opacity: 1, scale: 1 }}
-              exit={{ opacity: 0, scale: 1.02 }}
-              transition={{ duration: 0.2 }}
-              className="max-w-7xl mx-auto h-full"
-            >
-              {renderView()}
-            </motion.div>
-          </AnimatePresence>
-        </main>
+          <main className="flex-1 min-w-0 overflow-y-auto p-6 md:p-8">
+            <AnimatePresence mode="wait">
+              <motion.div
+                key={currentView}
+                initial={{ opacity: 0, scale: 0.98 }}
+                animate={{ opacity: 1, scale: 1 }}
+                exit={{ opacity: 0, scale: 1.02 }}
+                transition={{ duration: 0.2 }}
+                className="max-w-7xl mx-auto h-full"
+              >
+                <ErrorBoundary>
+                  {renderView()}
+                </ErrorBoundary>
+              </motion.div>
+            </AnimatePresence>
+          </main>
+        </div>
       </div>
-    </div>
+    </ErrorBoundary>
   );
 }

@@ -16,6 +16,7 @@ from app.services.translate_service import TranslateService
 from app.services.tts_service import TTSService
 from app.services.url_service import URLService
 from app.services.llm_service import LLMService
+from app.services.video_gen_service import VideoGenService
 from app.core.config import settings
 from app.core.jobs import job_manager, JobStatus, JobType
 import os
@@ -43,10 +44,14 @@ class BackgroundWorker:
             self.thread.start()
             logger.info("Background worker started.")
 
-    def stop(self):
-        """Graceful shutdown."""
+    def stop(self, timeout: int = 10):
+        """Graceful shutdown — waits for current job to finish."""
         self.is_running = False
-        logger.info("Background worker stopping...")
+        if self.thread.is_alive():
+            self.thread.join(timeout=timeout)
+            if self.thread.is_alive():
+                logger.warning("Worker thread did not stop within %ss timeout.", timeout)
+        logger.info("Background worker stopped.")
 
     def add_job(self, job_id: str, payload: Dict[str, Any]):
         self.queue.put((job_id, payload))
@@ -96,6 +101,8 @@ class BackgroundWorker:
 
         if job_type == JobType.STUDIO:
             self._process_studio_job(job_id, payload)
+        elif job_type == JobType.SHORTS:
+            self._process_shorts_job(job_id, payload)
         else:
             self._process_dubbing_job(job_id, payload)
 
@@ -106,6 +113,7 @@ class BackgroundWorker:
         image_path = payload.get("image_path")
         voice_id = payload.get("voice_id", "vi-VN-HoaiMyNeural")
         duration_seconds = int(payload.get("duration_seconds") or 0)
+        aspect_ratio = payload.get("aspect_ratio", "16:9")
 
         if not image_path or not os.path.exists(image_path):
             raise ValueError("Background image not found for Studio Job.")
@@ -121,7 +129,6 @@ class BackgroundWorker:
         job_manager.update_job(job_id, JobStatus.PROCESSING, message="Step 2/3: Generating voiceover (TTS)...", progress=35)
         import asyncio
         loop = asyncio.new_event_loop()
-        asyncio.set_event_loop(loop)
 
         try:
             tts_service = TTSService(voice=voice_id)
@@ -143,14 +150,147 @@ class BackgroundWorker:
             job_manager.update_job(job_id, JobStatus.PROCESSING, message="Step 3/3: Assembling final video...", progress=75)
             output_filename = f"{job_id}_studio.mp4"
             output_path = settings.OUTPUT_DIR / output_filename
+            def update_render_progress(ratio: float):
+                progress = 75 + (ratio * 23)
+                job_manager.update_job(
+                    job_id,
+                    JobStatus.PROCESSING,
+                    message=f"Step 3/3: Rendering final video... {int(ratio * 100)}%",
+                    progress=round(progress, 1),
+                )
 
             success = VideoService.image_audio_to_video(
                 image_path=Path(image_path),
                 audio_path=audio_path,
                 output_path=output_path,
                 srt_path=srt_path,
-                font_size=50
+                font_size=50,
+                aspect_ratio=aspect_ratio,
+                progress_callback=update_render_progress,
             )
+
+            if success:
+                job_manager.update_job(job_id, JobStatus.COMPLETED, output_path=str(output_path), progress=100)
+            else:
+                job_manager.update_job(job_id, JobStatus.FAILED, error="FFmpeg video generation failed.")
+        finally:
+            loop.close()
+
+    def _process_shorts_job(self, job_id: str, payload: Dict[str, Any]):
+        logger.info(f"Starting Shorts processing for job {job_id}")
+        target_lang = payload.get("target_lang", "vi")
+        prompt = (payload.get("prompt") or "").strip()
+        script_input = (payload.get("script") or "").strip()
+        voice_id = payload.get("voice_id", "vi-VN-HoaiMyNeural")
+        duration_seconds = int(payload.get("duration_seconds") or 0)
+        aspect_ratio = payload.get("aspect_ratio", "9:16")
+        video_engine = payload.get("video_engine", "local")
+
+        if not prompt and not script_input:
+            raise ValueError("Shorts require either a prompt or a script.")
+
+        # Step 1/3: Script
+        self._check_pause_and_cancel(job_id)
+        job_manager.update_job(job_id, JobStatus.PROCESSING, message="Step 1/3: Building the script...", progress=5)
+        if script_input:
+            script = script_input
+        else:
+            script = LLMService.generate_short_script(prompt, target_lang)
+        if not script:
+            raise ValueError("Script generation returned empty output.")
+        job_manager.update_job(job_id, JobStatus.PROCESSING, message="Step 1/3: Script ready.", progress=30)
+
+        # Step 2/3: TTS
+        self._check_pause_and_cancel(job_id)
+        job_manager.update_job(job_id, JobStatus.PROCESSING, message="Step 2/3: Generating voiceover (TTS)...", progress=35)
+        import asyncio
+        loop = asyncio.new_event_loop()
+
+        try:
+            tts_service = TTSService(voice=voice_id)
+            audio_path, srt_path = loop.run_until_complete(
+                tts_service.generate_audio_with_subtitles(script, target_lang, job_id)
+            )
+
+            if duration_seconds > 0:
+                stretched_audio = settings.TEMP_DIR / f"{job_id}_tts_stretched.wav"
+                if VideoService.stretch_audio(audio_path, stretched_audio, duration_seconds):
+                    audio_path = stretched_audio
+                else:
+                    logger.warning("Could not stretch audio to %ss for job %s", duration_seconds, job_id)
+
+            job_manager.update_job(job_id, JobStatus.PROCESSING, message="Step 2/3: Voiceover generated.", progress=70)
+
+            # Step 3/3: Render
+            self._check_pause_and_cancel(job_id)
+            output_filename = f"{job_id}_shorts.mp4"
+            output_path = settings.OUTPUT_DIR / output_filename
+            if video_engine == "local":
+                job_manager.update_job(job_id, JobStatus.PROCESSING, message="Step 3/3: Rendering short...", progress=75)
+                width, height = VideoService._canvas_size(aspect_ratio)
+                background_path = settings.TEMP_DIR / f"{job_id}_bg.png"
+                background_path.parent.mkdir(parents=True, exist_ok=True)
+                VideoService.create_gradient_background(background_path, width, height)
+
+                def update_render_progress(ratio: float):
+                    progress = 75 + (ratio * 23)
+                    job_manager.update_job(
+                        job_id,
+                        JobStatus.PROCESSING,
+                        message=f"Step 3/3: Rendering short... {int(ratio * 100)}%",
+                        progress=round(progress, 1),
+                    )
+
+                success = VideoService.image_audio_to_video(
+                    image_path=background_path,
+                    audio_path=audio_path,
+                    output_path=output_path,
+                    srt_path=srt_path,
+                    font_size=56,
+                    aspect_ratio=aspect_ratio,
+                    progress_callback=update_render_progress,
+                )
+            else:
+                job_manager.update_job(
+                    job_id,
+                    JobStatus.PROCESSING,
+                    message=f"Step 3/3: Generating video with {video_engine}...",
+                    progress=75,
+                )
+                video_prompt = prompt or script
+                video_prompt = video_prompt[:800]
+                temp_video = settings.TEMP_DIR / f"{job_id}_{video_engine}.mp4"
+                video_service = VideoGenService()
+                generated_path = video_service.generate_fal_video(
+                    provider=video_engine,
+                    prompt=video_prompt,
+                    output_path=temp_video,
+                    aspect_ratio=aspect_ratio,
+                    duration_seconds=duration_seconds,
+                )
+
+                video_duration = VideoService.get_duration(generated_path)
+                if video_duration > 0:
+                    stretched_audio = settings.TEMP_DIR / f"{job_id}_tts_stretched.wav"
+                    if VideoService.stretch_audio(audio_path, stretched_audio, video_duration):
+                        audio_path = stretched_audio
+
+                def update_merge_progress(ratio: float):
+                    progress = 85 + (ratio * 13)
+                    job_manager.update_job(
+                        job_id,
+                        JobStatus.PROCESSING,
+                        message=f"Step 3/3: Final mix... {int(ratio * 100)}%",
+                        progress=round(progress, 1),
+                    )
+
+                success = VideoService.merge_audio_video(
+                    video_path=generated_path,
+                    audio_path=audio_path,
+                    output_path=output_path,
+                    srt_path=srt_path,
+                    progress_callback=update_merge_progress,
+                )
 
             if success:
                 job_manager.update_job(job_id, JobStatus.COMPLETED, output_path=str(output_path), progress=100)
@@ -187,7 +327,6 @@ class BackgroundWorker:
 
         import asyncio
         loop = asyncio.new_event_loop()
-        asyncio.set_event_loop(loop)
 
         try:
             # We wrap the pipeline to inject progress updates
@@ -217,6 +356,37 @@ class BackgroundWorker:
         output_video = settings.OUTPUT_DIR / f"dubbed_{Path(str(source_path)).name}"
 
         try:
+            def update_merge_progress(ratio: float):
+                progress = 82 + (ratio * 13)
+                job_manager.update_job(
+                    job_id,
+                    JobStatus.PROCESSING,
+                    message=f"Step 6/6: Merging audio and video... {int(ratio * 100)}%",
+                    progress=round(progress, 1),
+                )
+
+            def update_translate_progress(done: int, total: int):
+                if total <= 0:
+                    return
+                progress = 42 + ((done / total) * 13)
+                job_manager.update_job(
+                    job_id,
+                    JobStatus.PROCESSING,
+                    message=f"Step 4/6: Translating text... ({done}/{total})",
+                    progress=round(progress, 1),
+                )
+
+            def update_tts_progress(done: int, total: int):
+                if total <= 0:
+                    return
+                progress = 57 + ((done / total) * 23)
+                job_manager.update_job(
+                    job_id,
+                    JobStatus.PROCESSING,
+                    message=f"Step 5/6: Generating dubbed audio (TTS)... ({done}/{total})",
+                    progress=round(progress, 1),
+                )
+
             # Step 2/6: Extract Audio (12% -> 20%)
             self._check_cancelled(job_id)
             if not pipeline.video_service.extract_audio(source_path, orig_audio):
@@ -234,13 +404,20 @@ class BackgroundWorker:
             # Step 4/6: Translate (40% -> 55%)
             self._check_pause_and_cancel(job_id)
             job_manager.update_job(job_id, JobStatus.PROCESSING, message="Step 4/6: Translating text...", progress=42)
-            translated_segments = pipeline.translate_service.translate_batch(merged_segments)
+            translated_segments = pipeline.translate_service.translate_batch(
+                merged_segments,
+                progress_callback=update_translate_progress,
+            )
             job_manager.update_job(job_id, JobStatus.PROCESSING, message="Step 4/6: Translation complete.", progress=55)
 
             # Step 5/6: TTS (55% -> 80%)
             self._check_pause_and_cancel(job_id)
             job_manager.update_job(job_id, JobStatus.PROCESSING, message="Step 5/6: Generating dubbed audio (TTS)...", progress=57)
-            audio_segments = await pipeline.tts_service.process_segments(translated_segments, session_dir)
+            audio_segments = await pipeline.tts_service.process_segments(
+                translated_segments,
+                session_dir,
+                progress_callback=update_tts_progress,
+            )
 
             from app.utils.subtitles import chunks_to_srt
             srt_content = chunks_to_srt(translated_segments)
@@ -256,7 +433,13 @@ class BackgroundWorker:
             if not pipeline.video_service.concat_audio_segments(concat_list_path, final_audio):
                 raise Exception("Failed to concatenate audio segments")
 
-            if not pipeline.video_service.merge_audio_video(source_path, final_audio, output_video, srt_path):
+            if not pipeline.video_service.merge_audio_video(
+                source_path,
+                final_audio,
+                output_video,
+                srt_path,
+                progress_callback=update_merge_progress,
+            ):
                 raise Exception("Failed to merge audio and video")
 
             job_manager.update_job(job_id, JobStatus.PROCESSING, message="Step 6/6: Finalizing...", progress=95)

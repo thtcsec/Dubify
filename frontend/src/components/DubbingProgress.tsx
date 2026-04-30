@@ -4,7 +4,9 @@ import { Progress } from '../components/ui/progress';
 import { Badge } from '../components/ui/badge';
 import { CheckCircle, XCircle, Loader2, Download, Ban, PauseCircle, Play } from 'lucide-react';
 import api from '../lib/api';
+import { apiOrigin } from '../lib/api';
 import { Button } from './ui/button';
+import { useJobEvents } from '../lib/jobEvents';
 
 interface JobStatusResponse {
   status: 'pending' | 'processing' | 'paused' | 'completed' | 'failed' | 'cancelled';
@@ -23,50 +25,52 @@ interface DubbingProgressProps {
 export const DubbingProgress = ({ jobId, onComplete, onError }: DubbingProgressProps) => {
   const [data, setData] = useState<JobStatusResponse | null>(null);
   const intervalRef = useRef<number | null>(null);
-  const pollCountRef = useRef(0);
 
-  const poll = useCallback(async () => {
+  const loadJob = useCallback(async () => {
     try {
       const response = await api.get(`/status/${jobId}`);
       const job = response.data;
       setData(job);
-      pollCountRef.current++;
-
-      if (job.status === 'completed') {
-        if (intervalRef.current) clearInterval(intervalRef.current);
-        if (onComplete) onComplete(job.output_path);
-        return;
-      }
-      if (job.status === 'failed') {
-        if (intervalRef.current) clearInterval(intervalRef.current);
-        if (onError) onError(job.error || 'Unknown error');
-        return;
-      }
-      if (job.status === 'cancelled') {
-        if (intervalRef.current) clearInterval(intervalRef.current);
-        return;
-      }
     } catch (error) {
-      console.error('Polling error', error);
+      console.error('Job load error', error);
     }
-  }, [jobId, onComplete, onError]);
+  }, [jobId]);
 
   useEffect(() => {
-    const getPollInterval = () => pollCountRef.current < 10 ? 1500 : 4000;
+    const timeoutId = window.setTimeout(() => {
+      void loadJob();
+    }, 0);
+    intervalRef.current = window.setInterval(() => {
+      void loadJob();
+    }, 20000);
 
-    const startPolling = () => {
-      poll();
-      intervalRef.current = window.setInterval(poll, getPollInterval());
+    return () => {
+      window.clearTimeout(timeoutId);
+      if (intervalRef.current) clearInterval(intervalRef.current);
     };
+  }, [jobId, loadJob]);
 
-    startPolling();
-    return () => { if (intervalRef.current) clearInterval(intervalRef.current); };
-  }, [jobId, poll]);
+  useJobEvents<JobStatusResponse>((payload) => {
+    if (payload.job_id !== jobId) {
+      return;
+    }
+    setData(payload.job);
+  });
+
+  useEffect(() => {
+    if (!data) return;
+    if (data.status === 'completed' && data.output_path) {
+      onComplete?.(data.output_path);
+    }
+    if (data.status === 'failed') {
+      onError?.(data.error || 'Unknown error');
+    }
+  }, [data, onComplete, onError]);
 
   const handleCancel = async () => {
     try {
       await api.post(`/jobs/${jobId}/cancel`);
-      poll();
+      void loadJob();
     } catch (error) {
       console.error('Failed to cancel job', error);
     }
@@ -75,7 +79,7 @@ export const DubbingProgress = ({ jobId, onComplete, onError }: DubbingProgressP
   const handlePause = async () => {
     try {
       await api.post(`/jobs/${jobId}/pause`);
-      poll();
+      void loadJob();
     } catch (error) {
       console.error('Failed to pause job', error);
     }
@@ -84,12 +88,7 @@ export const DubbingProgress = ({ jobId, onComplete, onError }: DubbingProgressP
   const handleResume = async () => {
     try {
       await api.post(`/jobs/${jobId}/resume`);
-      // Restart polling
-      if (intervalRef.current) clearInterval(intervalRef.current);
-      pollCountRef.current = 0;
-      const getPollInterval = () => pollCountRef.current < 10 ? 1500 : 4000;
-      intervalRef.current = window.setInterval(poll, getPollInterval());
-      poll();
+      void loadJob();
     } catch (error) {
       console.error('Failed to resume job', error);
     }
@@ -145,7 +144,7 @@ export const DubbingProgress = ({ jobId, onComplete, onError }: DubbingProgressP
               {isCompleted ? '100%' :
                isCancelled ? 'Cancelled' :
                isFailed ? 'Failed' :
-               `${progressValue}%`}
+               `${Number(progressValue).toFixed(progressValue % 1 === 0 ? 0 : 1)}%`}
             </span>
           </div>
           <Progress value={progressValue} className="h-2" />
@@ -197,7 +196,7 @@ export const DubbingProgress = ({ jobId, onComplete, onError }: DubbingProgressP
               <video
                 controls
                 className="w-full max-h-[300px]"
-                src={outputFilename ? `http://localhost:8000/storage/output/${outputFilename}` : undefined}
+                src={outputFilename ? `${apiOrigin}/storage/output/${outputFilename}` : undefined}
               >
                 Your browser does not support the video tag.
               </video>
@@ -208,7 +207,7 @@ export const DubbingProgress = ({ jobId, onComplete, onError }: DubbingProgressP
                 return;
               }
               const a = document.createElement('a');
-              a.href = `http://localhost:8000/storage/output/${filename}`;
+              a.href = `${apiOrigin}/storage/output/${filename}`;
               a.download = filename || 'output.mp4';
               document.body.appendChild(a);
               a.click();

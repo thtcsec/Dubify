@@ -6,13 +6,17 @@ import {
   HelpCircle,
   PanelLeftClose,
   PanelLeftOpen,
-  Sparkles
+  Sparkles,
+  Clapperboard,
+  Wand2
 } from "lucide-react";
 import { Button } from "../components/ui/button";
 
 const NAV_MAIN = [
   { id: "dashboard", title: "Dub Video", icon: LayoutDashboard },
-  { id: "studio", title: "AI Studio", icon: Sparkles },
+  { id: "studio", title: "Script Video", icon: Sparkles },
+  { id: "shorts", title: "Auto Shorts", icon: Wand2 },
+  { id: "editor", title: "Studio", icon: Clapperboard },
   { id: "projects", title: "Projects", icon: Layers },
   { id: "history", title: "History", icon: Clock },
 ];

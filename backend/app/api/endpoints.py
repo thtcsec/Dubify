@@ -1,10 +1,21 @@
 from fastapi import APIRouter, UploadFile, File, BackgroundTasks, HTTPException, Form, Query
+from fastapi.responses import FileResponse, StreamingResponse
 from typing import Optional
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 from pathlib import Path
 import shutil
 import os
 import logging
+from urllib.parse import urlparse
+import requests
+import json
+
+# ─── Constants ───────────────────────────────────────────────────────────────
+MAX_IMAGE_SIZE = 20 * 1024 * 1024  # 20 MB
+MAX_TEXT_LENGTH = 50_000  # characters
+MAX_UPLOAD_SIZE = 2 * 1024 * 1024 * 1024  # 2 GB
+ALLOWED_ASPECT_RATIOS = {"16:9", "9:16", "4:3", "1:1"}
+ALLOWED_VIDEO_ENGINES = {"local", "veo3", "kling", "minimax", "seedance"}
 
 from app.core.config import settings
 from app.core.jobs import job_manager, JobStatus, JobType
@@ -71,19 +82,36 @@ async def dub_url(
 @router.post("/studio")
 async def create_studio_video(
     background_tasks: BackgroundTasks,
-    image: UploadFile = File(...),
+    image: Optional[UploadFile] = File(None),
+    image_url: Optional[str] = Form(None),
     text: str = Form(...),
     target_lang: str = Form("vi"),
     voice_id: str = Form("vi-VN-HoaiMyNeural"),
-    duration_seconds: int = Form(0)
+    duration_seconds: int = Form(0),
+    aspect_ratio: str = Form("16:9"),
 ):
     """Create a studio video from image + text."""
+    if image is None and not image_url:
+        raise HTTPException(status_code=400, detail="Please upload an image or provide an image URL.")
+
+    # Input validation
+    if len(text) > MAX_TEXT_LENGTH:
+        raise HTTPException(status_code=400, detail=f"Text too long. Maximum {MAX_TEXT_LENGTH} characters.")
+    if aspect_ratio not in ALLOWED_ASPECT_RATIOS:
+        raise HTTPException(status_code=400, detail=f"Invalid aspect ratio. Allowed: {', '.join(ALLOWED_ASPECT_RATIOS)}")
+    if duration_seconds < 0 or duration_seconds > 600:
+        raise HTTPException(status_code=400, detail="duration_seconds must be between 0 and 600.")
+
     job_id = f"studio_{os.urandom(4).hex()}"
     job_manager.register_job(job_id, filename="studio_project", job_type=JobType.STUDIO, text=text, target_lang=target_lang)
 
-    image_path = settings.INPUT_DIR / f"{job_id}_{image.filename}"
-    with open(image_path, "wb") as buffer:
-        shutil.copyfileobj(image.file, buffer)
+    if image is not None:
+        image_filename = image.filename or "studio_image"
+        image_path = settings.INPUT_DIR / f"{job_id}_{image_filename}"
+        with open(image_path, "wb") as buffer:
+            shutil.copyfileobj(image.file, buffer)
+    else:
+        image_path = _download_image_to_input(job_id, image_url or "")
 
     worker.add_job(job_id, {
         "type": JobType.STUDIO,
@@ -92,9 +120,115 @@ async def create_studio_video(
         "target_lang": target_lang,
         "voice_id": voice_id,
         "duration_seconds": max(0, int(duration_seconds)),
+        "aspect_ratio": aspect_ratio,
     })
 
     return {"job_id": job_id}
+
+
+@router.post("/shorts")
+async def create_shorts_video(
+    background_tasks: BackgroundTasks,
+    prompt: Optional[str] = Form(None),
+    script: Optional[str] = Form(None),
+    target_lang: str = Form("vi"),
+    voice_id: str = Form("vi-VN-HoaiMyNeural"),
+    duration_seconds: int = Form(0),
+    aspect_ratio: str = Form("9:16"),
+    video_engine: str = Form("local"),
+):
+    """Create a caption-first short video from a prompt or script."""
+    cleaned_prompt = (prompt or "").strip()
+    cleaned_script = (script or "").strip()
+    if not cleaned_prompt and not cleaned_script:
+        raise HTTPException(status_code=400, detail="Please provide a prompt or a script.")
+
+    if video_engine not in ALLOWED_VIDEO_ENGINES:
+        raise HTTPException(status_code=400, detail=f"Unsupported video engine: {video_engine}")
+    if aspect_ratio not in ALLOWED_ASPECT_RATIOS:
+        raise HTTPException(status_code=400, detail=f"Invalid aspect ratio. Allowed: {', '.join(ALLOWED_ASPECT_RATIOS)}")
+    if duration_seconds < 0 or duration_seconds > 600:
+        raise HTTPException(status_code=400, detail="duration_seconds must be between 0 and 600.")
+    if len(cleaned_prompt) > MAX_TEXT_LENGTH:
+        raise HTTPException(status_code=400, detail=f"Prompt too long. Maximum {MAX_TEXT_LENGTH} characters.")
+    if len(cleaned_script) > MAX_TEXT_LENGTH:
+        raise HTTPException(status_code=400, detail=f"Script too long. Maximum {MAX_TEXT_LENGTH} characters.")
+
+    job_id = f"shorts_{os.urandom(4).hex()}"
+    job_manager.register_job(
+        job_id,
+        filename="shorts_project",
+        job_type=JobType.SHORTS,
+        prompt=cleaned_prompt,
+        target_lang=target_lang,
+        video_engine=video_engine,
+    )
+
+    worker.add_job(job_id, {
+        "type": JobType.SHORTS,
+        "prompt": cleaned_prompt,
+        "script": cleaned_script,
+        "target_lang": target_lang,
+        "voice_id": voice_id,
+        "duration_seconds": max(0, int(duration_seconds)),
+        "aspect_ratio": aspect_ratio,
+        "video_engine": video_engine,
+    })
+
+    return {"job_id": job_id}
+
+
+def _download_image_to_input(job_id: str, image_url: str) -> Path:
+    parsed = urlparse(image_url)
+    if parsed.scheme not in {"http", "https"}:
+        raise HTTPException(status_code=400, detail="Only http/https image URLs are supported.")
+
+    # Block private/internal IPs (basic SSRF protection)
+    hostname = parsed.hostname or ""
+    if hostname in ("localhost", "127.0.0.1", "0.0.0.0", "::1") or hostname.startswith("10.") or hostname.startswith("192.168.") or hostname.startswith("172."):
+        raise HTTPException(status_code=400, detail="Internal/private URLs are not allowed.")
+
+    try:
+        response = requests.get(image_url, timeout=30, stream=True, headers={"User-Agent": "Dubify/1.0"})
+        response.raise_for_status()
+    except Exception as exc:
+        raise HTTPException(status_code=400, detail=f"Could not fetch image from URL: {exc}") from exc
+
+    content_type = (response.headers.get("content-type") or "").lower()
+    if "image" not in content_type:
+        response.close()
+        raise HTTPException(status_code=400, detail="The provided URL did not return an image.")
+
+    # Check Content-Length header if available
+    content_length = response.headers.get("content-length")
+    if content_length and int(content_length) > MAX_IMAGE_SIZE:
+        response.close()
+        raise HTTPException(status_code=400, detail=f"Image too large. Maximum {MAX_IMAGE_SIZE // (1024*1024)} MB.")
+
+    suffix = ".jpg"
+    if "png" in content_type:
+        suffix = ".png"
+    elif "webp" in content_type:
+        suffix = ".webp"
+    elif "gif" in content_type:
+        suffix = ".gif"
+
+    image_path = settings.INPUT_DIR / f"{job_id}_remote{suffix}"
+    downloaded_size = 0
+    try:
+        with open(image_path, "wb") as buffer:
+            for chunk in response.iter_content(chunk_size=1024 * 128):
+                if chunk:
+                    downloaded_size += len(chunk)
+                    if downloaded_size > MAX_IMAGE_SIZE:
+                        raise HTTPException(status_code=400, detail=f"Image too large. Maximum {MAX_IMAGE_SIZE // (1024*1024)} MB.")
+                    buffer.write(chunk)
+    finally:
+        response.close()
+
+    if not image_path.exists() or image_path.stat().st_size == 0:
+        raise HTTPException(status_code=400, detail="Downloaded image is empty.")
+    return image_path
 
 
 # ─── Job Status & History ───────────────────────────────────────────────────
@@ -108,12 +242,32 @@ async def get_status(job_id: str):
     return job
 
 
+@router.get("/jobs/events")
+async def stream_job_events():
+    """Push job updates via Server-Sent Events so clients don't need heavy polling."""
+    subscriber = job_manager.subscribe()
+
+    def event_stream():
+        try:
+            yield "event: ready\ndata: {}\n\n"
+            while True:
+                try:
+                    event = subscriber.get(timeout=20)
+                    yield f"event: {event['type']}\ndata: {json.dumps(event, ensure_ascii=False)}\n\n"
+                except Exception:
+                    yield "event: heartbeat\ndata: {}\n\n"
+        finally:
+            job_manager.unsubscribe(subscriber)
+
+    return StreamingResponse(event_stream(), media_type="text/event-stream")
+
+
 @router.get("/jobs")
 async def get_job_history(
     limit: int = Query(20, ge=1, le=100),
     offset: int = Query(0, ge=0),
     status: Optional[str] = Query(None, description="Filter by status: pending, processing, completed, failed, cancelled, paused"),
-    job_type: Optional[str] = Query(None, description="Filter by type: dubbing, studio"),
+    job_type: Optional[str] = Query(None, description="Filter by type: dubbing, studio, shorts"),
 ):
     """Get paginated job history with optional filters."""
     return job_manager.get_history(
@@ -122,6 +276,35 @@ async def get_job_history(
         status_filter=status,
         job_type_filter=job_type,
     )
+
+
+@router.get("/jobs/{job_id}/artifacts")
+async def get_job_artifacts(job_id: str):
+    job = job_manager.get_job(job_id)
+    if not job:
+        raise HTTPException(status_code=404, detail="Job not found")
+
+    artifacts: dict[str, Optional[str]] = {
+        "subtitle_path": None,
+        "transcript_path": None,
+        "session_dir": None,
+    }
+
+    session_dir = settings.TEMP_DIR / job_id
+    if session_dir.exists():
+        artifacts["session_dir"] = str(session_dir)
+        transcript_path = session_dir / "transcript.json"
+        subtitle_path = session_dir / "translated.srt"
+        if transcript_path.exists():
+            artifacts["transcript_path"] = str(transcript_path)
+        if subtitle_path.exists():
+            artifacts["subtitle_path"] = str(subtitle_path)
+    else:
+        studio_subtitle = settings.TEMP_DIR / f"{job_id}_tts.vtt"
+        if studio_subtitle.exists():
+            artifacts["subtitle_path"] = str(studio_subtitle)
+
+    return artifacts
 
 
 # ─── Job Control (Cancel / Pause / Resume) ──────────────────────────────────
@@ -229,8 +412,6 @@ async def list_voices():
 @router.post("/voice-preview")
 async def preview_voice(voice_id: str = Form(...), text: str = Form("Xin chào, đây là bản xem trước giọng nói.")):
     """Generate voice preview using the active TTS backend."""
-    from fastapi.responses import FileResponse
-
     suffix = ".wav" if not settings.allow_network_tts() else ".mp3"
     tmp_path = settings.TEMP_DIR / f"preview_{voice_id.replace('-', '_')}{suffix}"
     try:

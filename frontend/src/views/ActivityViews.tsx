@@ -9,7 +9,9 @@ import { Label } from '@/components/ui/label';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import api from '@/lib/api';
+import { useJobEvents } from '@/lib/jobEvents';
 
 // ─── History View (Real data from /jobs endpoint) ───────────────────────────
 
@@ -18,6 +20,7 @@ interface Job {
   filename: string;
   type: string;
   status: string;
+  progress?: number;
   message: string | null;
   error: string | null;
   created_at: string;
@@ -108,6 +111,7 @@ export function HistoryView() {
   const [isLoading, setIsLoading] = useState(true);
   const [statusFilter, setStatusFilter] = useState<string>('all');
   const [offset, setOffset] = useState(0);
+  const [selectedJob, setSelectedJob] = useState<Job | null>(null);
   const limit = 20;
 
   const fetchJobs = useCallback(async () => {
@@ -132,6 +136,25 @@ export function HistoryView() {
 
     return () => window.clearTimeout(timeoutId);
   }, [fetchJobs]);
+
+  useJobEvents<Job>((payload) => {
+    const nextJob = payload.job;
+    setJobs((currentJobs) => {
+      const existingIndex = currentJobs.findIndex((job) => job.id === nextJob.id);
+      if (existingIndex >= 0) {
+        const updated = [...currentJobs];
+        updated[existingIndex] = nextJob;
+        return updated;
+      }
+      const includeByStatus = statusFilter === 'all' || nextJob.status === statusFilter;
+      if (offset === 0 && includeByStatus) {
+        return [nextJob, ...currentJobs].slice(0, limit);
+      }
+      return currentJobs;
+    });
+    setSelectedJob((current) => (current?.id === nextJob.id ? nextJob : current));
+    setTotal((value) => value + (payload.type === 'created' ? 1 : 0));
+  });
 
   return (
     <div className="space-y-6">
@@ -174,7 +197,12 @@ export function HistoryView() {
             </div>
           ) : (
             jobs.map((job, i) => (
-              <div key={job.id} className={`p-4 flex gap-4 items-start ${i !== jobs.length - 1 ? 'border-b border-white/5' : ''}`}>
+              <button
+                type="button"
+                key={job.id}
+                onClick={() => setSelectedJob(job)}
+                className={`w-full p-4 flex gap-4 items-start text-left transition-colors hover:bg-white/5 ${i !== jobs.length - 1 ? 'border-b border-white/5' : ''}`}
+              >
                 <div className={`p-2 rounded-full ${statusColor(job.status)}`}>
                   {statusIcon(job.status)}
                 </div>
@@ -192,12 +220,15 @@ export function HistoryView() {
                     {job.status === 'failed' && job.error ? `Error: ${job.error}` :
                      job.message || `Status: ${job.status}`}
                   </p>
+                  <p className="text-[10px] text-slate-500 mt-1">
+                    Progress: {typeof job.progress === 'number' ? `${job.progress}%` : 'N/A'}
+                  </p>
                   <p className="text-[10px] text-slate-600 font-mono mt-1">{job.id}</p>
                 </div>
                 <Badge className={`shrink-0 text-[10px] ${statusColor(job.status)}`}>
                   {job.status.toUpperCase()}
                 </Badge>
-              </div>
+              </button>
             ))
           )}
         </CardContent>
@@ -219,6 +250,69 @@ export function HistoryView() {
           </div>
         </div>
       )}
+
+      <Dialog open={Boolean(selectedJob)} onOpenChange={(open) => !open && setSelectedJob(null)}>
+        <DialogContent className="border-white/10 bg-slate-950 text-white sm:max-w-2xl">
+          <DialogHeader>
+            <DialogTitle>Job Details</DialogTitle>
+          </DialogHeader>
+          {selectedJob && (
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4 text-sm">
+              <div className="space-y-3">
+                <div>
+                  <Label className="text-[10px] uppercase text-slate-500">Filename</Label>
+                  <p className="mt-1 text-slate-100 break-all">{selectedJob.filename}</p>
+                </div>
+                <div>
+                  <Label className="text-[10px] uppercase text-slate-500">Status</Label>
+                  <p className="mt-1">{selectedJob.status}</p>
+                </div>
+                <div>
+                  <Label className="text-[10px] uppercase text-slate-500">Progress</Label>
+                  <p className="mt-1">{typeof selectedJob.progress === 'number' ? `${selectedJob.progress}%` : 'N/A'}</p>
+                </div>
+                <div>
+                  <Label className="text-[10px] uppercase text-slate-500">Type</Label>
+                  <p className="mt-1">{selectedJob.type}</p>
+                </div>
+              </div>
+              <div className="space-y-3">
+                <div>
+                  <Label className="text-[10px] uppercase text-slate-500">Created</Label>
+                  <p className="mt-1">{new Date(selectedJob.created_at).toLocaleString()}</p>
+                </div>
+                <div>
+                  <Label className="text-[10px] uppercase text-slate-500">Updated</Label>
+                  <p className="mt-1">{new Date(selectedJob.updated_at).toLocaleString()}</p>
+                </div>
+                <div>
+                  <Label className="text-[10px] uppercase text-slate-500">Started / Completed</Label>
+                  <p className="mt-1">{selectedJob.started_at ? new Date(selectedJob.started_at).toLocaleString() : 'Not started'}</p>
+                  <p className="mt-1">{selectedJob.completed_at ? new Date(selectedJob.completed_at).toLocaleString() : 'Not completed'}</p>
+                </div>
+                <div>
+                  <Label className="text-[10px] uppercase text-slate-500">Output</Label>
+                  <p className="mt-1 break-all text-slate-300">{selectedJob.output_path || 'No output yet'}</p>
+                </div>
+              </div>
+              <div className="md:col-span-2 space-y-3">
+                <div>
+                  <Label className="text-[10px] uppercase text-slate-500">Message</Label>
+                  <p className="mt-1 text-slate-300">{selectedJob.message || 'No message'}</p>
+                </div>
+                <div>
+                  <Label className="text-[10px] uppercase text-slate-500">Error</Label>
+                  <p className="mt-1 text-red-300">{selectedJob.error || 'No error'}</p>
+                </div>
+                <div>
+                  <Label className="text-[10px] uppercase text-slate-500">Job ID</Label>
+                  <p className="mt-1 font-mono break-all text-slate-400">{selectedJob.id}</p>
+                </div>
+              </div>
+            </div>
+          )}
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

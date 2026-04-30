@@ -4,7 +4,9 @@ interface HeaderProps {
 
 const VIEW_NAMES: Record<string, string> = {
     dashboard: "Dub Video",
-    studio: "AI News Studio",
+    studio: "Script to Video",
+  shorts: "Auto Shorts",
+    editor: "Studio Editor",
     projects: "My Projects",
     history: "Activity History",
     settings: "Settings",

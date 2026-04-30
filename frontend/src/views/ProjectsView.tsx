@@ -4,6 +4,7 @@ import { Badge } from '../components/ui/badge';
 import { Button } from '../components/ui/button';
 import { Play, Download, Clock, Loader2, Ban, PauseCircle, XCircle, RefreshCw } from 'lucide-react';
 import api from '../lib/api';
+import { useJobEvents } from '../lib/jobEvents';
 
 interface Job {
   id: string;
@@ -51,6 +52,19 @@ export function ProjectsView() {
 
     return () => window.clearTimeout(timeoutId);
   }, []);
+
+  useJobEvents<Job>((payload) => {
+    const nextJob = payload.job;
+    setProjects((currentProjects) => {
+      const existingIndex = currentProjects.findIndex((job) => job.id === nextJob.id);
+      if (existingIndex >= 0) {
+        const updated = [...currentProjects];
+        updated[existingIndex] = nextJob;
+        return updated;
+      }
+      return [nextJob, ...currentProjects];
+    });
+  });
 
   const handleCancel = async (jobId: string) => {
     try {

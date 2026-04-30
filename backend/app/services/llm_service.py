@@ -55,6 +55,66 @@ class LLMService:
         return raw_text.strip()
 
     @staticmethod
+    def generate_short_script(prompt: str, target_lang: str = "vi") -> str:
+        """
+        Generate a short-form script from a prompt.
+        Falls back to a template if no API key is configured.
+        """
+        cleaned_prompt = (prompt or "").strip()
+        if not cleaned_prompt:
+            return ""
+
+        if not settings.allow_cloud_llm():
+            logger.info("Processing mode does not allow cloud LLM. Using template fallback.")
+            return LLMService._fallback_short_script(cleaned_prompt, target_lang)
+
+        provider, api_key = LLMService._get_provider()
+
+        if provider == "none":
+            logger.warning("No LLM API key found. Falling back to template.")
+            return LLMService._fallback_short_script(cleaned_prompt, target_lang)
+
+        system_prompt = (
+            "You are a short-form video scriptwriter."
+            " Create a tight, engaging, spoken-only script for a vertical short (9:16)."
+            f" Write in language: {target_lang}."
+            " Keep it punchy: hook, 3 fast takeaways, close with a soft CTA."
+            " No bullet points, no markdown, no stage directions."
+        )
+
+        try:
+            if provider == "groq":
+                return LLMService._call_groq(api_key, system_prompt, cleaned_prompt)
+            if provider == "openai":
+                return LLMService._call_openai(api_key, system_prompt, cleaned_prompt)
+            if provider == "gemini":
+                return LLMService._call_gemini(api_key, system_prompt, cleaned_prompt)
+        except Exception as e:
+            logger.error(f"LLM ({provider}) failed for shorts: {e}")
+            return LLMService._fallback_short_script(cleaned_prompt, target_lang)
+        return LLMService._fallback_short_script(cleaned_prompt, target_lang)
+
+    @staticmethod
+    def _fallback_short_script(prompt: str, target_lang: str) -> str:
+        topic = prompt.strip()
+        if target_lang.lower().startswith("vi"):
+            return (
+                f"Hom nay noi nhanh ve {topic}. "
+                "Ba y chinh: mot, vi sao no quan trong; "
+                "hai, dieu can nho ngay; "
+                "ba, mot meo ap dung trong thuc te. "
+                "Neu thay huu ich, theo doi de xem them."
+            )
+
+        return (
+            f"Today we are talking about {topic}. "
+            "Three quick takeaways: first, why it matters; "
+            "second, the key idea to remember; "
+            "third, one practical tip. "
+            "If this helps, follow for more."
+        )
+
+    @staticmethod
     def _call_openai(api_key: str, system_prompt: str, user_text: str) -> str:
         logger.info("Calling OpenAI API...")
         response = requests.post(

@@ -13,6 +13,7 @@ import json
 import threading
 import logging
 import time
+import queue
 from typing import Dict, Any, Optional, List
 from enum import Enum
 from datetime import datetime
@@ -36,6 +37,7 @@ class JobStatus(str, Enum):
 class JobType(str, Enum):
     DUBBING = "dubbing"
     STUDIO = "studio"
+    SHORTS = "shorts"
 
 
 class JobManager:
@@ -45,6 +47,7 @@ class JobManager:
         # Cancel/pause signals per job
         self._cancel_events: Dict[str, threading.Event] = {}
         self._pause_events: Dict[str, threading.Event] = {}
+        self._subscribers: List[queue.Queue] = []
         self._load()
 
     # ─── Persistence ────────────────────────────────────────────────────
@@ -68,13 +71,45 @@ class JobManager:
             self.jobs = {}
 
     def _save(self):
-        """Persist jobs to disk."""
+        """Persist jobs to disk atomically (write to temp, then rename)."""
         try:
             JOBS_FILE.parent.mkdir(parents=True, exist_ok=True)
-            with open(JOBS_FILE, "w", encoding="utf-8") as f:
+            tmp_path = JOBS_FILE.with_suffix(".tmp")
+            with open(tmp_path, "w", encoding="utf-8") as f:
                 json.dump(self.jobs, f, indent=2, ensure_ascii=False, default=str)
+            # Atomic rename (safe on most OS)
+            tmp_path.replace(JOBS_FILE)
         except IOError as e:
             logger.error(f"Failed to persist jobs: {e}")
+
+    def _emit_event(self, event_type: str, job_id: str):
+        job = self.jobs.get(job_id)
+        if not job:
+            return
+        payload = {
+            "type": event_type,
+            "job_id": job_id,
+            "job": dict(job),
+        }
+        stale_subscribers: List[queue.Queue] = []
+        for subscriber in self._subscribers:
+            try:
+                subscriber.put_nowait(payload)
+            except Exception:
+                stale_subscribers.append(subscriber)
+        if stale_subscribers:
+            self._subscribers = [subscriber for subscriber in self._subscribers if subscriber not in stale_subscribers]
+
+    def subscribe(self) -> queue.Queue:
+        subscriber: queue.Queue = queue.Queue()
+        with self._lock:
+            self._subscribers.append(subscriber)
+        return subscriber
+
+    def unsubscribe(self, subscriber: queue.Queue):
+        with self._lock:
+            if subscriber in self._subscribers:
+                self._subscribers.remove(subscriber)
 
     # ─── Job Creation ───────────────────────────────────────────────────
 
@@ -98,6 +133,7 @@ class JobManager:
             self._cancel_events[job_id] = threading.Event()
             self._pause_events[job_id] = threading.Event()
             self._save()
+            self._emit_event("created", job_id)
         return job_id
 
     def register_job(self, job_id: str, filename: str = "untitled", **extra: Any) -> str:
@@ -121,6 +157,7 @@ class JobManager:
             self._cancel_events[job_id] = threading.Event()
             self._pause_events[job_id] = threading.Event()
             self._save()
+            self._emit_event("created", job_id)
         return job_id
 
     # ─── Job Updates ────────────────────────────────────────────────────
@@ -157,6 +194,7 @@ class JobManager:
             if progress is not None:
                 job["progress"] = progress
             self._save()
+            self._emit_event("updated", job_id)
 
     def get_job(self, job_id: str) -> Optional[Dict[str, Any]]:
         return self.jobs.get(job_id)
@@ -212,6 +250,7 @@ class JobManager:
                 job["completed_at"] = datetime.now().isoformat()
                 job["message"] = "Cancelled by user"
                 self._save()
+                self._emit_event("updated", job_id)
                 return True
 
             # If processing/paused, signal the worker
@@ -222,6 +261,7 @@ class JobManager:
             job["completed_at"] = datetime.now().isoformat()
             job["message"] = "Cancelled by user"
             self._save()
+            self._emit_event("updated", job_id)
             return True
 
     def pause_job(self, job_id: str) -> bool:
@@ -236,6 +276,7 @@ class JobManager:
             job["updated_at"] = datetime.now().isoformat()
             job["message"] = "Paused by user"
             self._save()
+            self._emit_event("updated", job_id)
             return True
 
     def resume_job(self, job_id: str) -> bool:
@@ -250,6 +291,7 @@ class JobManager:
             job["updated_at"] = datetime.now().isoformat()
             job["message"] = "Resumed"
             self._save()
+            self._emit_event("updated", job_id)
             return True
 
     def is_cancelled(self, job_id: str) -> bool:

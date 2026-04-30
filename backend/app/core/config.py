@@ -1,4 +1,5 @@
 import os
+from typing import Optional
 from pydantic_settings import BaseSettings
 from pathlib import Path
 
@@ -31,6 +32,9 @@ class Settings(BaseSettings):
     ENABLE_BGM_RETENTION: bool = False
     WHISPERX_API_URL: Optional[str] = None
     F5TTS_API_URL: Optional[str] = None
+    
+    # CORS (comma-separated origins, default allows localhost dev)
+    CORS_ORIGINS: str = "http://localhost:5173,http://localhost:3000,http://localhost:80"
     
     # API Keys (Loaded from .env)
     OPENAI_API_KEY: str = ""

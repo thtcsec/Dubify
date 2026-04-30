@@ -529,20 +529,29 @@ class URLService:
         return match.group(1) if match else None
 
     def _download_from_gdrive(self, url: str) -> str:
-        # Implementation for public gdrive files using direct download link
         file_id = self._extract_gdrive_id(url)
         if not file_id:
             raise URLServiceError("Could not extract GDrive ID")
         
-        # This is a common way to download public GDrive files
         download_url = f"https://drive.google.com/uc?export=download&id={file_id}"
-        dest_path = os.path.join(self.download_path, f"gdrive_{file_id}.mp4")
+        dest_path = os.path.join(str(self.download_path), f"gdrive_{file_id}.mp4")
         
-        # Note: Large files might need a confirmation token handling, but start simple
-        response = requests.get(download_url, stream=True)
+        response = requests.get(download_url, stream=True, timeout=60)
         response.raise_for_status()
-        with open(dest_path, "wb") as f:
-            for chunk in response.iter_content(chunk_size=8192):
-                if chunk: f.write(chunk)
         
+        max_size = 5 * 1024 * 1024 * 1024  # 5 GB
+        downloaded = 0
+        with open(dest_path, "wb") as f:
+            for chunk in response.iter_content(chunk_size=1024 * 512):
+                if chunk:
+                    downloaded += len(chunk)
+                    if downloaded > max_size:
+                        response.close()
+                        os.remove(dest_path)
+                        raise URLServiceError("File too large (max 5 GB).")
+                    f.write(chunk)
+        response.close()
+        
+        if not os.path.exists(dest_path) or os.path.getsize(dest_path) == 0:
+            raise URLServiceError("Downloaded file is empty.")
         return dest_path

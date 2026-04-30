@@ -18,14 +18,17 @@ from typing import List, Pattern
 
 # Patterns to mask in log output
 SENSITIVE_PATTERNS: List[Pattern] = [
-    # API keys (common formats: sk-xxx, gsk_xxx, AIza, etc.)
-    re.compile(r'(sk-[a-zA-Z0-9]{20,})', re.IGNORECASE),
+    # API keys (common formats: sk-xxx, gsk_xxx, AIza, fal-, etc.)
+    re.compile(r'(sk-[a-zA-Z0-9_\-]{20,})', re.IGNORECASE),
     re.compile(r'(gsk_[a-zA-Z0-9]{20,})', re.IGNORECASE),
     re.compile(r'(AIza[a-zA-Z0-9_-]{30,})', re.IGNORECASE),
+    re.compile(r'(fal[_-][a-zA-Z0-9_\-]{10,})', re.IGNORECASE),
     # Generic key=value patterns for Authorization headers
     re.compile(r'(Bearer\s+)[a-zA-Z0-9_\-\.]{20,}', re.IGNORECASE),
     # Environment variable values that look like keys
     re.compile(r'(api[_-]?key["\s:=]+)["\']?([a-zA-Z0-9_\-\.]{10,})["\']?', re.IGNORECASE),
+    # Anthropic key format
+    re.compile(r'(sk-ant-[a-zA-Z0-9_\-]{20,})', re.IGNORECASE),
 ]
 
 # Keywords that indicate sensitive context
