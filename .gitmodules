@@ -1,0 +1,3 @@
+[submodule "third_party/pyvideotrans"]
+	path = third_party/pyvideotrans
+	url = https://github.com/jianchang512/pyvideotrans.git
