@@ -34,19 +34,55 @@ class ASRService:
             self.model = whisper.load_model(self.model_size, device=self.device)
 
     def transcribe(self, audio_path: Path) -> List[Dict[str, Any]]:
-        """Transcribe audio file and return segments with timestamps."""
+        """Transcribe audio to text segments. Uses WhisperX API if configured, else local Faster-Whisper."""
+        
+        if settings.WHISPERX_API_URL:
+            logger.info(f"Using external WhisperX API for transcription and diarization: {audio_path}")
+            try:
+                import requests
+                # Mock OpenAI-like API call as implemented in pyvideotrans
+                url = f"{settings.WHISPERX_API_URL.rstrip('/')}/audio/transcriptions"
+                with open(audio_path, "rb") as f:
+                    files = {"file": (audio_path.name, f, "audio/wav")}
+                    data = {
+                        "model": self.model_size,
+                        "response_format": "diarized_json"
+                    }
+                    response = requests.post(url, files=files, data=data, timeout=300)
+                    response.raise_for_status()
+                    result = response.json()
+                
+                segments_out = []
+                for it in result.get("segments", []):
+                    segments_out.append({
+                        "start": it.get("start", 0.0),
+                        "end": it.get("end", 0.0),
+                        "text": it.get("text", "").strip(),
+                        "speaker": it.get("speaker", "SPEAKER_00")
+                    })
+                return segments_out
+            except Exception as e:
+                logger.error(f"WhisperX API failed, falling back to local Faster-Whisper: {e}")
+
         self._load_model()
-        logger.info(f"Starting transcription for {audio_path}")
+        logger.info(f"Transcribing {audio_path} using local Faster-Whisper...")
         
         segments_out = []
         
         if HAS_FASTER_WHISPER:
-            segments, info = self.model.transcribe(str(audio_path), beam_size=5)
+            segments, info = self.model.transcribe(
+                str(audio_path),
+                beam_size=5,
+                word_timestamps=False,
+                vad_filter=True,
+                vad_parameters=dict(min_silence_duration_ms=500)
+            )
             for segment in segments:
                 segments_out.append({
                     "start": segment.start,
                     "end": segment.end,
-                    "text": segment.text.strip()
+                    "text": segment.text.strip(),
+                    "speaker": "SPEAKER_00"
                 })
         else:
             result = self.model.transcribe(str(audio_path))
@@ -54,7 +90,8 @@ class ASRService:
                 segments_out.append({
                     "start": segment['start'],
                     "end": segment['end'],
-                    "text": segment['text'].strip()
+                    "text": segment['text'].strip(),
+                    "speaker": "SPEAKER_00"
                 })
         
         logger.info(f"Transcription completed. Found {len(segments_out)} segments.")
