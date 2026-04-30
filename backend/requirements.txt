@@ -2,6 +2,10 @@ fastapi==0.110.0
 uvicorn==0.27.1
 pydantic-settings==2.2.1
 python-multipart==0.0.9
+
+# Advanced Processing Features
+demucs>=4.0.1
+gradio-client>=0.16.1
 aiofiles==23.2.1
 
 # AI & Processing (Loosened versions for WhisperX compatibility)
@@ -20,6 +24,7 @@ torch
 torchaudio
 soundfile
 numpy
+pillow
 tqdm
 python-dotenv
 requests

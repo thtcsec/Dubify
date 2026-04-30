@@ -24,12 +24,21 @@ class Settings(BaseSettings):
     PROCESSING_MODE: str = "hybrid"
     DEFAULT_WHISPER_MODEL: str = "base"
     DEFAULT_NLLB_MODEL: str = "facebook/nllb-200-distilled-600M"
+    OLLAMA_API_BASE: str = "http://localhost:11434/api/generate"
+    OLLAMA_MODEL: str = "llama3"
+    
+    # Advanced Processing Features
+    ENABLE_BGM_RETENTION: bool = False
+    WHISPERX_API_URL: Optional[str] = None
+    F5TTS_API_URL: Optional[str] = None
     
     # API Keys (Loaded from .env)
     OPENAI_API_KEY: str = ""
     ANTHROPIC_API_KEY: str = ""
     GEMINI_API_KEY: str = ""
     GROQ_API_KEY: str = ""
+    FAL_KEY: str = ""
+    FAL_AI_API_KEY: str = ""
 
     # Downloader settings
     YTDLP_COOKIE_FILE: str = ""
