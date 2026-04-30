@@ -40,15 +40,49 @@ class DubbingPipeline:
             if not self.video_service.extract_audio(video_path, orig_audio):
                 raise Exception("Failed to extract audio")
 
+            asr_input_audio = orig_audio
+            bgm_audio = None
+            if settings.ENABLE_BGM_RETENTION:
+                logger.info("BGM Retention enabled. Separating vocals and BGM...")
+                vocals_path, bgm_path = self.video_service.separate_audio_demucs(orig_audio, session_dir)
+                if vocals_path and bgm_path:
+                    asr_input_audio = vocals_path
+                    bgm_audio = bgm_path
+                else:
+                    logger.warning("Demucs separation failed or not installed. Falling back to original audio.")
+
             # 3. Transcribe & Merge
             logger.info("Step 2/5: Transcribing...")
-            raw_segments = self.asr_service.transcribe(orig_audio)
+            raw_segments = self.asr_service.transcribe(asr_input_audio)
             merged_segments = self.asr_service.merge_segments_by_sentence(raw_segments)
             self.asr_service.save_transcript(merged_segments, transcript_path)
 
             # 4. Translate
             logger.info(f"Step 3/5: Translating to {self.target_lang}...")
             translated_segments = self.translate_service.translate_batch(merged_segments)
+
+            # Extract audio slices for voice cloning if F5-TTS is enabled
+            if settings.F5TTS_API_URL:
+                logger.info("Extracting audio slices for voice cloning reference...")
+                slices_dir = session_dir / "slices"
+                slices_dir.mkdir(exist_ok=True)
+                for i, seg in enumerate(translated_segments):
+                    slice_path = slices_dir / f"slice_{i}.wav"
+                    start_str = str(seg['start'])
+                    duration_str = str(seg['end'] - seg['start'])
+                    # Cut audio slice
+                    cut_cmd = [
+                        "ffmpeg", "-y", "-ss", start_str, "-t", duration_str,
+                        "-i", str(asr_input_audio), "-c", "copy", str(slice_path)
+                    ]
+                    import subprocess
+                    subprocess.run(cut_cmd, stdout=subprocess.DEVNULL, stderr=subprocess.PIPE)
+                    if slice_path.exists():
+                        seg['ref_audio'] = str(slice_path)
+            
+            # Setup TTS provider
+            if settings.F5TTS_API_URL:
+                self.tts_service.provider = "f5tts"
 
             # 5. TTS & Alignment
             logger.info("Step 4/5: Generating TTS and formatting subtitles...")
@@ -66,7 +100,23 @@ class DubbingPipeline:
             if not self.video_service.concat_audio_segments(concat_list_path, final_audio):
                 raise Exception("Failed to concatenate audio segments")
             
-            if not self.video_service.merge_audio_video(video_path, final_audio, output_video, srt_path):
+            # Mix BGM back in if enabled
+            final_audio_with_bgm = final_audio
+            if bgm_audio:
+                logger.info("Mixing BGM with dubbed audio...")
+                mixed_audio = session_dir / "dubbed_audio_with_bgm.wav"
+                # amix filter mixes inputs. If they have different lengths, we keep the shortest or longest.
+                mix_cmd = [
+                    "ffmpeg", "-y", "-i", str(final_audio), "-i", str(bgm_audio),
+                    "-filter_complex", "amix=inputs=2:duration=first:dropout_transition=3",
+                    str(mixed_audio)
+                ]
+                import subprocess
+                subprocess.run(mix_cmd, check=True, stdout=subprocess.DEVNULL, stderr=subprocess.PIPE)
+                if mixed_audio.exists():
+                    final_audio_with_bgm = mixed_audio
+            
+            if not self.video_service.merge_audio_video(video_path, final_audio_with_bgm, output_video, srt_path):
                 raise Exception("Failed to merge audio and video")
 
             logger.info(f"Pipeline completed successfully! Output: {output_video}")
