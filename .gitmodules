@@ -1,3 +1,6 @@
 [submodule "third_party/pyvideotrans"]
 	path = third_party/pyvideotrans
 	url = https://github.com/jianchang512/pyvideotrans.git
+[submodule "third_party/vietnormalizer"]
+	path = third_party/vietnormalizer
+	url = https://github.com/nghimestudio/vietnormalizer.git
