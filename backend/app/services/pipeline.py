@@ -18,7 +18,7 @@ class DubbingPipeline:
         self.video_service = VideoService()
         self.asr_service = ASRService(model_size=whisper_model)
         self.translate_service = TranslateService(target_lang=target_lang)
-        self.tts_service = TTSService()
+        self.tts_service = TTSService(target_lang=target_lang)
 
     async def run(self, video_path: Path, session_id: str) -> Optional[Path]:
         """

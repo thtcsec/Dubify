@@ -11,6 +11,7 @@ from piper import PiperVoice
 from app.core.config import settings
 from app.services.video_service import VideoService
 from app.services.f5_tts_service import F5TTSService
+from app.services.text_normalizer import normalize_for_tts
 
 logger = logging.getLogger(__name__)
 
@@ -18,11 +19,12 @@ class TTSService:
     _piper_cache: dict[str, PiperVoice] = {}
     _piper_lock = threading.Lock()
 
-    def __init__(self, voice: str = "vi-VN-HoaiMyNeural", rate: str = "+0%", pitch: str = "+0Hz", provider: str = "edge"):
+    def __init__(self, voice: str = "vi-VN-HoaiMyNeural", rate: str = "+0%", pitch: str = "+0Hz", provider: str = "edge", target_lang: str = "vi"):
         self.voice = voice
         self.rate = rate
         self.pitch = pitch
         self.provider = provider
+        self.target_lang = target_lang
         self.f5_service = F5TTSService()
 
     def _use_local_tts(self) -> bool:
@@ -267,6 +269,9 @@ class TTSService:
         if not text.strip():
             logger.warning("Empty text passed to TTS, skipping.")
             return False
+        
+        # Normalize text for TTS (numbers→words, dates, acronyms, loanwords)
+        text = normalize_for_tts(text, self.target_lang)
             
         if self.provider == "f5tts" and self.f5_service.is_available() and ref_audio_path and ref_text:
             return await self.f5_service.clone_voice(ref_audio_path, ref_text, text, output_path)
@@ -294,6 +299,8 @@ class TTSService:
 
     async def generate_audio_with_subtitles(self, text: str, target_lang: str, job_id: str) -> Tuple[Path, Path]:
         """Generate audio and subtitles using the active TTS backend."""
+        # Normalize text for TTS before generating audio
+        text = normalize_for_tts(text, target_lang)
         if self._use_local_tts():
             audio_path = settings.TEMP_DIR / f"{job_id}_tts.wav"
             srt_path = settings.TEMP_DIR / f"{job_id}_tts.vtt"

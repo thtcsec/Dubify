@@ -131,7 +131,7 @@ class BackgroundWorker:
         loop = asyncio.new_event_loop()
 
         try:
-            tts_service = TTSService(voice=voice_id)
+            tts_service = TTSService(voice=voice_id, target_lang=target_lang)
             audio_path, srt_path = loop.run_until_complete(
                 tts_service.generate_audio_with_subtitles(script, target_lang, job_id)
             )
@@ -207,7 +207,7 @@ class BackgroundWorker:
         loop = asyncio.new_event_loop()
 
         try:
-            tts_service = TTSService(voice=voice_id)
+            tts_service = TTSService(voice=voice_id, target_lang=target_lang)
             audio_path, srt_path = loop.run_until_complete(
                 tts_service.generate_audio_with_subtitles(script, target_lang, job_id)
             )
@@ -323,7 +323,7 @@ class BackgroundWorker:
             target_lang=target_lang,
             service_type=settings.default_translation_service(),
         )
-        pipeline.tts_service = TTSService()
+        pipeline.tts_service = TTSService(target_lang=target_lang)
 
         import asyncio
         loop = asyncio.new_event_loop()
