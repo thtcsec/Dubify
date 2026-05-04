@@ -392,7 +392,7 @@ class TTSService:
         Generate audio for all segments in parallel and align them with original timing.
         Returns list of paths to final aligned audio segments (1:1 mapping with input).
         """
-        if self._use_local_tts():
+        if self._use_local_tts() or self.provider == "f5tts":
             max_concurrency = 1
 
         logger.info(f"Generating TTS for {len(segments)} segments (concurrency={max_concurrency})")
@@ -407,7 +407,7 @@ class TTSService:
                 text = seg.get('translated_text', seg['text'])
                 target_duration = seg['end'] - seg['start']
                 
-                raw_suffix = ".wav" if self._use_local_tts() else ".mp3"
+                raw_suffix = ".wav" if (self._use_local_tts() or self.provider == "f5tts") else ".mp3"
                 raw_path = temp_dir / f"tts_{i}_raw{raw_suffix}"
                 aligned_path = temp_dir / f"tts_{i}_aligned.wav"
                 
@@ -464,9 +464,9 @@ class TTSService:
                 if gap > 0.01:
                     silence_path = temp_dir / f"gap_{i}.wav"
                     VideoService.create_silence(gap, silence_path)
-                    f.write(f"file '{silence_path.absolute()}'\n")
+                    f.write(f"file '{silence_path.absolute().as_posix()}'\n")
                 
-                f.write(f"file '{path.absolute()}'\n")
+                f.write(f"file '{path.absolute().as_posix()}'\n")
                 last_end = seg['end']
                 
         logger.info(f"Concat list created at {output_list_file} with sync gaps.")
