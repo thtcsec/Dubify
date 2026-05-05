@@ -49,6 +49,7 @@ class Settings(BaseSettings):
     YTDLP_COOKIES_FROM_BROWSERS: str = "chrome,edge,firefox"
     YTDLP_PROXY: str = ""
     YTDLP_SOCKET_TIMEOUT: int = 20
+    YTDLP_USE_OAUTH2: bool = False
     DOUYIN_FALLBACK_API_BASE: str = ""
     DOUYIN_FALLBACK_API_KEY: str = ""
     

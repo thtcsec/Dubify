@@ -8,6 +8,7 @@ between pipeline steps so jobs can be interrupted gracefully.
 import threading
 import queue
 import logging
+import asyncio
 from typing import Dict, Any
 from app.services.pipeline import DubbingPipeline
 from app.services.video_service import VideoService
@@ -128,6 +129,9 @@ class BackgroundWorker:
         self._check_pause_and_cancel(job_id)
         job_manager.update_job(job_id, JobStatus.PROCESSING, message="Step 2/3: Generating voiceover (TTS)...", progress=35)
         import asyncio
+        import os
+        if os.name == 'nt':
+            asyncio.set_event_loop_policy(asyncio.WindowsProactorEventLoopPolicy())
         loop = asyncio.new_event_loop()
 
         try:
@@ -326,6 +330,9 @@ class BackgroundWorker:
         pipeline.tts_service = TTSService(target_lang=target_lang)
 
         import asyncio
+        import os
+        if os.name == 'nt':
+            asyncio.set_event_loop_policy(asyncio.WindowsProactorEventLoopPolicy())
         loop = asyncio.new_event_loop()
 
         try:
@@ -353,7 +360,7 @@ class BackgroundWorker:
         transcript_path = session_dir / "transcript.json"
         concat_list_path = session_dir / "concat_list.txt"
         final_audio = session_dir / "dubbed_audio_final.wav"
-        output_video = settings.OUTPUT_DIR / f"dubbed_{Path(str(source_path)).name}"
+        output_video = settings.OUTPUT_DIR / f"{job_id}_dubbed_{Path(str(source_path)).name}"
 
         try:
             def update_merge_progress(ratio: float):
@@ -391,23 +398,66 @@ class BackgroundWorker:
             self._check_cancelled(job_id)
             if not pipeline.video_service.extract_audio(source_path, orig_audio):
                 raise Exception("Failed to extract audio")
+            
+            asr_input_audio = orig_audio
+            bgm_audio = None
+            if settings.ENABLE_BGM_RETENTION:
+                logger.info("BGM Retention enabled. Separating vocals and BGM...")
+                vocals_path, bgm_path = pipeline.video_service.separate_audio_demucs(orig_audio, session_dir)
+                if vocals_path and bgm_path:
+                    asr_input_audio = vocals_path
+                    bgm_audio = bgm_path
+                else:
+                    logger.warning("Demucs separation failed or not installed. Falling back to original audio.")
+
             job_manager.update_job(job_id, JobStatus.PROCESSING, message="Step 2/6: Audio extracted.", progress=20)
 
             # Step 3/6: Transcribe (20% -> 40%)
             self._check_pause_and_cancel(job_id)
             job_manager.update_job(job_id, JobStatus.PROCESSING, message="Step 3/6: Transcribing audio (ASR)...", progress=22)
-            raw_segments = pipeline.asr_service.transcribe(orig_audio)
-            merged_segments = pipeline.asr_service.merge_segments_by_sentence(raw_segments)
-            pipeline.asr_service.save_transcript(merged_segments, transcript_path)
+            raw_segments = await asyncio.to_thread(pipeline.asr_service.transcribe, asr_input_audio)
+            merged_segments = await asyncio.to_thread(pipeline.asr_service.merge_segments_by_sentence, raw_segments)
+            await asyncio.to_thread(pipeline.asr_service.save_transcript, merged_segments, transcript_path)
             job_manager.update_job(job_id, JobStatus.PROCESSING, message="Step 3/6: Transcription complete.", progress=40)
 
             # Step 4/6: Translate (40% -> 55%)
             self._check_pause_and_cancel(job_id)
             job_manager.update_job(job_id, JobStatus.PROCESSING, message="Step 4/6: Translating text...", progress=42)
-            translated_segments = pipeline.translate_service.translate_batch(
+            translated_segments = await asyncio.to_thread(
+                pipeline.translate_service.translate_batch,
                 merged_segments,
-                progress_callback=update_translate_progress,
+                5,
+                update_translate_progress
             )
+
+            # Extract audio slices for voice cloning if F5-TTS is enabled
+            if settings.F5TTS_API_URL:
+                logger.info("Extracting audio slices for voice cloning reference...")
+                slices_dir = session_dir / "slices"
+                slices_dir.mkdir(exist_ok=True)
+                for i, seg in enumerate(translated_segments):
+                    slice_path = slices_dir / f"slice_{i}.wav"
+                    start_str = str(seg['start'])
+                    duration_str = str(seg['end'] - seg['start'])
+                    cut_cmd = [
+                        "ffmpeg", "-y", "-ss", start_str, "-t", duration_str,
+                        "-i", str(asr_input_audio), "-c:a", "pcm_s16le", "-ar", "16000", "-ac", "1", str(slice_path)
+                    ]
+                    proc = await asyncio.create_subprocess_exec(
+                        *cut_cmd, stdout=asyncio.subprocess.DEVNULL, stderr=asyncio.subprocess.PIPE
+                    )
+                    try:
+                        _, stderr = await asyncio.wait_for(proc.communicate(), timeout=30.0)
+                        if proc.returncode != 0:
+                            logger.warning(f"FFmpeg slicing failed: {stderr.decode(errors='ignore')}")
+                    except asyncio.TimeoutError:
+                        proc.kill()
+                        await proc.communicate()
+                        logger.warning(f"FFmpeg slicing timed out for segment {i}")
+                    if slice_path.exists():
+                        seg['ref_audio'] = str(slice_path)
+                pipeline.tts_service.provider = "f5tts"
+
             job_manager.update_job(job_id, JobStatus.PROCESSING, message="Step 4/6: Translation complete.", progress=55)
 
             # Step 5/6: TTS (55% -> 80%)
@@ -433,9 +483,33 @@ class BackgroundWorker:
             if not pipeline.video_service.concat_audio_segments(concat_list_path, final_audio):
                 raise Exception("Failed to concatenate audio segments")
 
+            final_audio_with_bgm = final_audio
+            if bgm_audio:
+                logger.info("Mixing BGM with dubbed audio...")
+                mixed_audio = session_dir / "dubbed_audio_with_bgm.wav"
+                mix_cmd = [
+                    "ffmpeg", "-y", "-i", str(final_audio), "-i", str(bgm_audio),
+                    "-filter_complex", "[1:a]volume=0.15[bgm];[0:a][bgm]amix=inputs=2:duration=first:dropout_transition=3[aout]",
+                    "-map", "[aout]", "-ac", "2",
+                    str(mixed_audio)
+                ]
+                proc = await asyncio.create_subprocess_exec(
+                    *mix_cmd, stdout=asyncio.subprocess.DEVNULL, stderr=asyncio.subprocess.PIPE
+                )
+                try:
+                    _, stderr = await asyncio.wait_for(proc.communicate(), timeout=120.0)
+                    if proc.returncode != 0:
+                        logger.warning(f"BGM mixing failed: {stderr.decode(errors='ignore')}")
+                except asyncio.TimeoutError:
+                    proc.kill()
+                    await proc.communicate()
+                    logger.warning("BGM mixing timed out")
+                if mixed_audio.exists() and mixed_audio.stat().st_size > 0:
+                    final_audio_with_bgm = mixed_audio
+
             if not pipeline.video_service.merge_audio_video(
                 source_path,
-                final_audio,
+                final_audio_with_bgm,
                 output_video,
                 srt_path,
                 progress_callback=update_merge_progress,
@@ -450,6 +524,11 @@ class BackgroundWorker:
         except Exception as e:
             logger.error(f"Pipeline failed for {job_id}: {e}")
             return None
+        finally:
+            if getattr(settings, 'CLEANUP_TEMP', True):
+                import shutil
+                shutil.rmtree(session_dir, ignore_errors=True)
+
 
 
 # Global worker instance
