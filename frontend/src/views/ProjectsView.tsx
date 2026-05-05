@@ -106,7 +106,9 @@ export function ProjectsView() {
     <div className="space-y-6">
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-3xl font-bold mb-2">My Projects</h1>
+          <h1 className="text-3xl font-bold mb-2">
+            <span className="bg-gradient-to-br from-indigo-500 to-purple-500 text-transparent bg-clip-text">My Projects</span>
+          </h1>
           <p className="text-slate-400">Manage and download your AI dubbed videos.</p>
         </div>
         <Button variant="ghost" size="icon" onClick={fetchProjects} title="Refresh">
@@ -121,31 +123,38 @@ export function ProjectsView() {
           </Card>
         ) : (
           projects.map((project) => (
-            <Card key={project.id} className="bg-white/5 border-white/10 overflow-hidden hover:border-white/20 transition-all group">
-              <div className="aspect-video bg-slate-900 flex items-center justify-center relative">
-                <Play className="w-12 h-12 text-white/20 group-hover:text-primary/50 transition-colors" />
-                <div className="absolute top-2 right-2">
-                  <Badge className={statusBadgeClass(project.status)}>
-                    {project.status.toUpperCase()}
-                  </Badge>
-                </div>
-                {project.type && (
-                  <div className="absolute top-2 left-2">
-                    <Badge variant="outline" className="text-[10px] bg-black/40 backdrop-blur-sm">
-                      {project.type}
+            <div key={project.id} className="relative group">
+              <div className="absolute -inset-0.5 bg-gradient-to-r from-blue-500/10 to-indigo-500/10 rounded-2xl blur opacity-0 group-hover:opacity-100 transition duration-500"></div>
+              <Card className="relative bg-slate-900/80 backdrop-blur-xl border border-white/10 shadow-2xl overflow-hidden rounded-2xl flex flex-col h-full">
+                <div className="aspect-video bg-black flex items-center justify-center relative overflow-hidden group/video cursor-pointer border-b border-white/5">
+                  <Play className="w-12 h-12 text-white/20 group-hover/video:text-indigo-400 group-hover/video:scale-110 transition-all duration-300" />
+                  <div className="absolute top-3 right-3">
+                    <Badge className={`${statusBadgeClass(project.status)} shadow-lg backdrop-blur-md`}>
+                      {project.status.toUpperCase()}
                     </Badge>
                   </div>
-                )}
-              </div>
-              <CardHeader className="p-4">
-                <CardTitle className="text-base truncate">{project.filename || 'Untitled Project'}</CardTitle>
-                <CardDescription className="flex items-center gap-2 text-xs">
-                  <Clock className="w-3 h-3" /> {project.target_lang ? `Target: ${project.target_lang}` : 'dubbing'}
-                  {project.message && (
-                    <span className="text-slate-500 truncate">· {project.message}</span>
+                  {project.type && (
+                    <div className="absolute top-3 left-3">
+                      <Badge variant="outline" className="text-[10px] bg-black/60 backdrop-blur-md border-white/10 text-white">
+                        {project.type}
+                      </Badge>
+                    </div>
                   )}
-                </CardDescription>
-              </CardHeader>
+                  <div className="absolute inset-0 bg-gradient-to-t from-black/80 to-transparent opacity-0 group-hover/video:opacity-100 transition-opacity duration-300"></div>
+                </div>
+                <CardHeader className="p-5 flex-1">
+                  <CardTitle className="text-lg font-bold truncate group-hover:text-indigo-400 transition-colors">{project.filename || 'Untitled Project'}</CardTitle>
+                  <CardDescription className="flex items-center gap-2 text-xs mt-1">
+                    <Clock className="w-3.5 h-3.5 text-indigo-400" /> 
+                    <span className="font-semibold text-slate-300">{project.target_lang ? `Target: ${project.target_lang}` : 'dubbing'}</span>
+                    {project.message && (
+                      <>
+                        <span className="text-slate-600 px-1">•</span>
+                        <span className="text-slate-400 truncate">{project.message}</span>
+                      </>
+                    )}
+                  </CardDescription>
+                </CardHeader>
               <CardContent className="p-4 pt-0 flex gap-2">
                 {project.status === 'completed' && project.output_path && (
                   <>
@@ -196,6 +205,7 @@ export function ProjectsView() {
                 )}
               </CardContent>
             </Card>
+            </div>
           ))
         )}
       </div>

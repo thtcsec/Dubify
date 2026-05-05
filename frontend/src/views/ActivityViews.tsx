@@ -160,7 +160,9 @@ export function HistoryView() {
     <div className="space-y-6">
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-3xl font-bold mb-2">Activity History</h1>
+          <h1 className="text-3xl font-bold mb-2">
+            <span className="bg-gradient-to-br from-blue-500 to-indigo-500 text-transparent bg-clip-text">Activity History</span>
+          </h1>
           <p className="text-slate-400">Track all your dubbing jobs and their status.</p>
         </div>
         <div className="flex items-center gap-3">
@@ -184,8 +186,10 @@ export function HistoryView() {
         </div>
       </div>
 
-      <Card className="bg-white/5 border-white/10">
-        <CardContent className="p-0">
+      <div className="relative group">
+        <div className="absolute -inset-0.5 bg-gradient-to-r from-blue-500/10 to-indigo-500/10 rounded-2xl blur opacity-0 group-hover:opacity-100 transition duration-500"></div>
+        <Card className="relative bg-slate-900/80 backdrop-blur-xl border border-white/10 shadow-2xl overflow-hidden rounded-2xl">
+          <CardContent className="p-0">
           {isLoading ? (
             <div className="flex items-center justify-center py-16">
               <Loader2 className="w-6 h-6 animate-spin text-slate-400" />
@@ -233,6 +237,7 @@ export function HistoryView() {
           )}
         </CardContent>
       </Card>
+      </div>
 
       {/* Pagination */}
       {total > limit && (
@@ -401,13 +406,17 @@ export function SettingsView() {
   return (
     <div className="space-y-6">
       <div>
-        <h1 className="text-3xl font-bold mb-2">System Settings</h1>
+        <h1 className="text-3xl font-bold mb-2">
+          <span className="bg-gradient-to-br from-indigo-500 to-purple-500 text-transparent bg-clip-text">System Settings</span>
+        </h1>
         <p className="text-slate-400">Manage your local environment and AI provider keys.</p>
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
         {/* Environment Paths */}
-        <Card className="bg-white/5 border-white/10 lg:col-span-2">
+        <div className="relative group lg:col-span-2">
+          <div className="absolute -inset-0.5 bg-gradient-to-r from-indigo-500/10 to-purple-500/10 rounded-2xl blur opacity-0 group-hover:opacity-100 transition duration-500"></div>
+          <Card className="relative bg-slate-900/80 backdrop-blur-xl border border-white/10 shadow-2xl overflow-hidden rounded-2xl h-full">
           <CardHeader>
             <CardTitle className="flex items-center gap-2 text-lg"><HardDrive className="w-5 h-5 text-primary" /> Environment Paths</CardTitle>
           </CardHeader>
@@ -432,9 +441,12 @@ export function SettingsView() {
             </div>
           </CardContent>
         </Card>
+        </div>
 
         {/* AI Models */}
-        <Card className="bg-white/5 border-white/10">
+        <div className="relative group">
+          <div className="absolute -inset-0.5 bg-gradient-to-r from-blue-500/10 to-teal-500/10 rounded-2xl blur opacity-0 group-hover:opacity-100 transition duration-500"></div>
+          <Card className="relative bg-slate-900/80 backdrop-blur-xl border border-white/10 shadow-2xl overflow-hidden rounded-2xl h-full">
           <CardHeader>
             <CardTitle className="flex items-center gap-2 text-lg"><Globe className="w-5 h-5 text-primary" /> Default Models</CardTitle>
           </CardHeader>
@@ -521,22 +533,25 @@ export function SettingsView() {
             </div>
           </CardContent>
         </Card>
+        </div>
 
         {/* API Keys — All 4 providers */}
-        <Card className="bg-white/5 border-white/10 lg:col-span-3">
+        <div className="relative group lg:col-span-3">
+          <div className="absolute -inset-0.5 bg-gradient-to-r from-purple-500/10 to-pink-500/10 rounded-2xl blur opacity-0 group-hover:opacity-100 transition duration-500"></div>
+          <Card className="relative bg-slate-900/80 backdrop-blur-xl border border-white/10 shadow-2xl overflow-hidden rounded-2xl">
           <CardHeader className="flex flex-row items-center justify-between">
             <CardTitle className="flex items-center gap-2 text-lg"><Shield className="w-5 h-5 text-primary" /> AI Provider API Keys</CardTitle>
             <div className="flex gap-2">
               {isEditing ? (
                 <>
-                  <Button variant="ghost" size="sm" onClick={() => setIsEditing(false)} disabled={isSaving}>Cancel</Button>
-                  <Button size="sm" onClick={handleSave} disabled={isSaving}>
+                  <Button variant="ghost" size="sm" onClick={() => setIsEditing(false)} disabled={isSaving} className="text-slate-400 hover:text-white hover:bg-white/10">Cancel</Button>
+                  <Button size="sm" onClick={handleSave} disabled={isSaving} className="btn-glow bg-gradient-to-r from-indigo-600 to-purple-600 hover:from-indigo-500 hover:to-purple-500 text-white shadow-[0_0_15px_rgba(79,70,229,0.3)]">
                     {isSaving ? <Loader2 className="w-4 h-4 animate-spin mr-2" /> : null}
                     Save to .env
                   </Button>
                 </>
               ) : (
-                <Button variant="outline" size="sm" onClick={() => setIsEditing(true)}>Edit Keys</Button>
+                <Button variant="outline" size="sm" onClick={() => setIsEditing(true)} className="border-white/10 bg-white/5 hover:bg-white/10 text-white">Edit Keys</Button>
               )}
             </div>
           </CardHeader>
@@ -586,6 +601,7 @@ export function SettingsView() {
             </div>
           </CardContent>
         </Card>
+        </div>
       </div>
     </div>
   );

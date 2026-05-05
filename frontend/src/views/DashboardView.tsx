@@ -44,9 +44,12 @@ export function DashboardView({
   return (
     <>
       {!jobId && (
-        <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }}>
-           <h1 className="text-3xl font-bold mb-2">Create New Dubbing Project</h1>
-           <p className="text-slate-400 mb-8">Select a source to begin the AI localization process.</p>
+        <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} className="mb-8">
+           <h1 className="text-3xl font-bold mb-2 flex items-center gap-3">
+             <span className="bg-gradient-to-br from-blue-500 to-indigo-500 text-transparent bg-clip-text">Create New Dubbing Project</span>
+             <span className="bg-blue-500/10 text-blue-400 text-xs px-2 py-1 rounded border border-blue-500/20 font-mono tracking-widest uppercase">Start</span>
+           </h1>
+           <p className="text-slate-400">Select a source to begin the AI localization process.</p>
         </motion.div>
       )}
 

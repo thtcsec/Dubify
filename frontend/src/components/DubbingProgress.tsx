@@ -111,44 +111,55 @@ export const DubbingProgress = ({ jobId, onComplete, onError }: DubbingProgressP
   const progressValue = data.progress ?? (isCompleted ? 100 : isProcessing ? 50 : isFailed || isCancelled ? 0 : 0);
 
   return (
-    <Card className="w-full max-w-lg mx-auto mt-8 border border-slate-800 bg-slate-900/50 shadow-xl overflow-hidden">
-      <CardHeader className="bg-slate-900/80 pb-4">
-        <CardTitle className="flex items-center justify-between">
-          <span className="text-lg font-bold flex items-center gap-2">
-            {isCompleted ? <CheckCircle className="text-green-500" /> :
-             isFailed ? <XCircle className="text-red-500" /> :
-             isCancelled ? <Ban className="text-orange-500" /> :
-             isPaused ? <PauseCircle className="text-yellow-500" /> :
-             <Loader2 className="animate-spin text-indigo-400" />}
-            {isCompleted ? 'Video Ready!' :
-             isFailed ? 'Generation Failed' :
-             isCancelled ? 'Job Cancelled' :
-             isPaused ? 'Job Paused' :
-             'Generating Video...'}
-          </span>
-          <Badge variant={
-            isCompleted ? "default" :
-            isFailed ? "destructive" :
-            isCancelled ? "secondary" :
-            "outline"
-          }>
-            {data.status.toUpperCase()}
-          </Badge>
-        </CardTitle>
-      </CardHeader>
-      <CardContent className="pt-6 space-y-4">
-        <div className="space-y-2">
-          <div className="flex justify-between text-sm font-medium">
-            <span>Progress</span>
-            <span>
-              {isCompleted ? '100%' :
-               isCancelled ? 'Cancelled' :
-               isFailed ? 'Failed' :
-               `${Number(progressValue).toFixed(progressValue % 1 === 0 ? 0 : 1)}%`}
+    <div className="relative group w-full max-w-lg mx-auto mt-8">
+      <div className="absolute -inset-0.5 bg-gradient-to-b from-indigo-500/20 to-purple-500/20 rounded-2xl blur opacity-100 transition duration-500"></div>
+      <Card className="relative border border-white/10 bg-slate-900/80 backdrop-blur-xl shadow-2xl overflow-hidden rounded-2xl">
+        <CardHeader className="bg-white/5 pb-4 border-b border-white/5">
+          <CardTitle className="flex items-center justify-between">
+            <span className="text-lg font-bold flex items-center gap-3">
+              {isCompleted ? <div className="p-1.5 bg-green-500/20 rounded-lg"><CheckCircle className="text-green-400 w-5 h-5" /></div> :
+               isFailed ? <div className="p-1.5 bg-red-500/20 rounded-lg"><XCircle className="text-red-400 w-5 h-5" /></div> :
+               isCancelled ? <div className="p-1.5 bg-orange-500/20 rounded-lg"><Ban className="text-orange-400 w-5 h-5" /></div> :
+               isPaused ? <div className="p-1.5 bg-yellow-500/20 rounded-lg"><PauseCircle className="text-yellow-400 w-5 h-5" /></div> :
+               <div className="p-1.5 bg-indigo-500/20 rounded-lg"><Loader2 className="animate-spin text-indigo-400 w-5 h-5" /></div>}
+              {isCompleted ? 'Video Ready!' :
+               isFailed ? 'Generation Failed' :
+               isCancelled ? 'Job Cancelled' :
+               isPaused ? 'Job Paused' :
+               'Generating Video...'}
             </span>
+            <Badge variant={
+              isCompleted ? "default" :
+              isFailed ? "destructive" :
+              isCancelled ? "secondary" :
+              "outline"
+            } className={isCompleted ? "bg-green-500 hover:bg-green-600" : isFailed ? "bg-red-500" : isCancelled ? "bg-orange-500" : "bg-indigo-500/20 text-indigo-300 border-indigo-500/30"}>
+              {data.status.toUpperCase()}
+            </Badge>
+          </CardTitle>
+        </CardHeader>
+        <CardContent className="pt-6 space-y-6">
+          <div className="space-y-3">
+            <div className="flex justify-between text-xs font-bold uppercase tracking-widest text-slate-400">
+              <span>Progress</span>
+              <span className="text-indigo-400">
+                {isCompleted ? '100%' :
+                 isCancelled ? 'Cancelled' :
+                 isFailed ? 'Failed' :
+                 `${Number(progressValue).toFixed(progressValue % 1 === 0 ? 0 : 1)}%`}
+              </span>
+            </div>
+            <div className="relative h-2 w-full bg-slate-800 rounded-full overflow-hidden">
+              <div 
+                className={`absolute left-0 top-0 bottom-0 transition-all duration-500 ease-out ${isCompleted ? 'bg-green-500' : isFailed ? 'bg-red-500' : isCancelled ? 'bg-orange-500' : 'bg-gradient-to-r from-indigo-500 to-purple-500'}`}
+                style={{ width: `${progressValue}%` }}
+              >
+                {!isCompleted && !isFailed && !isCancelled && (
+                   <div className="absolute inset-0 bg-white/20 w-full animate-[shimmer_2s_infinite]"></div>
+                )}
+              </div>
+            </div>
           </div>
-          <Progress value={progressValue} className="h-2" />
-        </div>
 
         {/* Live status message */}
         <div className="text-sm text-slate-400 italic min-h-[1.5rem]">
@@ -190,18 +201,19 @@ export const DubbingProgress = ({ jobId, onComplete, onError }: DubbingProgressP
         </div>
 
         {isCompleted && data.output_path && (
-          <div className="space-y-3">
+          <div className="space-y-4 pt-4 border-t border-white/5">
             {/* Video Preview */}
-            <div className="rounded-lg overflow-hidden border border-slate-700 bg-black">
+            <div className="rounded-xl overflow-hidden border border-white/10 bg-black shadow-lg relative group">
               <video
                 controls
-                className="w-full max-h-[300px]"
+                className="w-full max-h-[300px] object-contain"
                 src={outputFilename ? `${apiOrigin}/storage/output/${outputFilename}` : undefined}
               >
                 Your browser does not support the video tag.
               </video>
+              <div className="absolute inset-0 ring-1 ring-inset ring-white/10 pointer-events-none rounded-xl"></div>
             </div>
-            <Button className="w-full bg-indigo-600 hover:bg-indigo-500" onClick={() => {
+            <Button className="w-full btn-glow bg-gradient-to-r from-indigo-600 to-purple-600 hover:from-indigo-500 hover:to-purple-500 text-white font-bold py-6 rounded-xl text-base shadow-[0_0_20px_rgba(79,70,229,0.3)] hover:shadow-[0_0_25px_rgba(79,70,229,0.5)] transition-all transform hover:-translate-y-0.5" onClick={() => {
               const filename = outputFilename;
               if (!filename) {
                 return;
@@ -213,11 +225,12 @@ export const DubbingProgress = ({ jobId, onComplete, onError }: DubbingProgressP
               a.click();
               document.body.removeChild(a);
             }}>
-              <Download className="w-4 h-4 mr-2" /> Download Result
+              <Download className="w-5 h-5 mr-2" /> Download Result
             </Button>
           </div>
         )}
       </CardContent>
     </Card>
+    </div>
   );
 };

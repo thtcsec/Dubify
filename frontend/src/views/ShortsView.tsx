@@ -204,209 +204,213 @@ export function ShortsView({ targetLang, setTargetLang }: ShortsViewProps) {
               )}
 
               <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
-                <div className="lg:col-span-8 space-y-6">
-                  <div className="bg-slate-900/50 border border-slate-800 rounded-xl p-6">
-                    <div className="flex items-center justify-between mb-3">
-                      <Label className="text-base font-semibold">1. Content Input</Label>
-                      {wordCount > 0 && (
-                        <span className="text-xs text-slate-500">
-                          {wordCount} words · ~{estimatedDuration}s
-                        </span>
-                      )}
+                <div className="lg:col-span-7 space-y-8">
+                  <div className="relative group">
+                    <div className="absolute -inset-0.5 bg-gradient-to-r from-emerald-500/20 to-teal-500/20 rounded-2xl blur opacity-0 group-hover:opacity-100 transition duration-500"></div>
+                    <div className="relative bg-slate-900/80 backdrop-blur-xl border border-white/10 rounded-2xl p-6 shadow-2xl">
+                      <div className="flex items-center justify-between mb-6">
+                        <Label className="text-lg font-bold flex items-center gap-2">
+                          <span className="bg-emerald-500/20 text-emerald-400 p-1.5 rounded-lg">
+                            <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" /></svg>
+                          </span>
+                          Content Input
+                        </Label>
+                        {wordCount > 0 && (
+                          <span className="text-xs font-mono bg-emerald-500/10 text-emerald-300 px-3 py-1 rounded-full border border-emerald-500/20">
+                            {wordCount} words · ~{estimatedDuration}s
+                          </span>
+                        )}
+                      </div>
+                      <Tabs value={mode} onValueChange={(value) => setMode(value as 'prompt' | 'script')}>
+                        <TabsList className="mb-4 bg-black/40 border border-white/5 rounded-xl h-12 w-full grid grid-cols-2 p-1">
+                          <TabsTrigger value="prompt" className="rounded-lg data-[state=active]:bg-white/10 data-[state=active]:text-emerald-400 transition-all font-semibold">Prompt Mode</TabsTrigger>
+                          <TabsTrigger value="script" className="rounded-lg data-[state=active]:bg-white/10 data-[state=active]:text-emerald-400 transition-all font-semibold">Script Mode</TabsTrigger>
+                        </TabsList>
+                        <TabsContent value="prompt" className="mt-0">
+                          <Textarea
+                            placeholder="Describe the short you want. We will expand it into a full spoken script..."
+                            className="min-h-[250px] bg-black/40 border-white/5 focus:border-emerald-500/50 rounded-xl transition-all resize-none text-base placeholder:text-slate-600 focus:ring-1 focus:ring-emerald-500/50"
+                            value={prompt}
+                            onChange={(e) => setPrompt(e.target.value)}
+                          />
+                        </TabsContent>
+                        <TabsContent value="script" className="mt-0">
+                          <Textarea
+                            placeholder="Paste your final script. Keep it concise and conversational..."
+                            className="min-h-[250px] bg-black/40 border-white/5 focus:border-emerald-500/50 rounded-xl transition-all resize-none text-base placeholder:text-slate-600 focus:ring-1 focus:ring-emerald-500/50"
+                            value={script}
+                            onChange={(e) => setScript(e.target.value)}
+                          />
+                        </TabsContent>
+                      </Tabs>
+                      <p className="text-xs text-slate-500 mt-4 flex items-center gap-2">
+                        <svg className="w-4 h-4 text-emerald-500/50" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>
+                        Local mode needs no key. Veo/Kling/MiniMax/Seedance require a fal.ai key (FAL_KEY).
+                      </p>
                     </div>
-                    <Tabs value={mode} onValueChange={(value) => setMode(value as 'prompt' | 'script')}>
-                      <TabsList className="mb-4">
-                        <TabsTrigger value="prompt">Prompt</TabsTrigger>
-                        <TabsTrigger value="script">Script</TabsTrigger>
-                      </TabsList>
-                      <TabsContent value="prompt">
-                        <Textarea
-                          placeholder="Describe the short you want. We will expand it into a full spoken script."
-                          className="min-h-[200px] bg-slate-950/50 border-slate-800 focus:border-indigo-500 transition-colors"
-                          value={prompt}
-                          onChange={(e) => setPrompt(e.target.value)}
-                        />
-                      </TabsContent>
-                      <TabsContent value="script">
-                        <Textarea
-                          placeholder="Paste your final script. Keep it concise and conversational."
-                          className="min-h-[200px] bg-slate-950/50 border-slate-800 focus:border-indigo-500 transition-colors"
-                          value={script}
-                          onChange={(e) => setScript(e.target.value)}
-                        />
-                      </TabsContent>
-                    </Tabs>
-                    <p className="text-xs text-slate-500 mt-3">
-                      Local mode needs no key. Veo/Kling/MiniMax/Seedance require a fal.ai key (FAL_KEY).
-                    </p>
                   </div>
                 </div>
 
-                <div className="lg:col-span-4 space-y-6">
-                  <div className="bg-slate-900/50 border border-slate-800 rounded-xl p-6">
-                    <h3 className="font-semibold mb-4 flex items-center gap-2">
-                      <svg className="w-4 h-4 text-indigo-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z"></path>
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"></path>
-                      </svg>
-                      Shorts Settings
-                    </h3>
+                <div className="lg:col-span-5 space-y-8">
+                  <div className="relative group h-full flex flex-col">
+                    <div className="absolute -inset-0.5 bg-gradient-to-r from-teal-500/20 to-blue-500/20 rounded-2xl blur opacity-0 group-hover:opacity-100 transition duration-500"></div>
+                    <div className="relative bg-slate-900/80 backdrop-blur-xl border border-white/10 rounded-2xl p-6 shadow-2xl flex-1 flex flex-col">
+                      <h3 className="text-lg font-bold mb-6 flex items-center gap-2">
+                        <span className="bg-teal-500/20 text-teal-400 p-1.5 rounded-lg">
+                          <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 6V4m0 2a2 2 0 100 4m0-4a2 2 0 110 4m-6 8a2 2 0 100-4m0 4a2 2 0 110-4m0 4v2m0-6V4m6 6v10m6-2a2 2 0 100-4m0 4a2 2 0 110-4m0 4v2m0-6V4"></path></svg>
+                        </span>
+                        Configuration
+                      </h3>
 
-                    <div className="space-y-4">
-                      <div className="space-y-2">
-                        <Label className="text-slate-400 text-xs uppercase tracking-wider">Video Model</Label>
+                      <div className="space-y-6 flex-1">
                         <div className="space-y-3">
-                          {MODEL_OPTIONS.map((option) => {
-                            const isSelected = option.value === videoEngine;
-                            return (
-                              <button
-                                key={option.value}
-                                type="button"
-                                onClick={() => setVideoEngine(option.value)}
-                                className={`w-full text-left rounded-lg border px-3 py-3 transition-colors ${
-                                  isSelected
-                                    ? 'border-indigo-500/70 bg-indigo-500/10'
-                                    : 'border-slate-800 bg-slate-950/40 hover:border-slate-700'
-                                }`}
-                              >
-                                <div className="flex items-center justify-between">
-                                  <span className="text-sm font-semibold text-slate-200">{option.name}</span>
-                                  {option.requiresKey && (
-                                    <span className="text-[10px] uppercase text-slate-500">FAL_KEY</span>
-                                  )}
-                                  {!option.requiresKey && (
-                                    <span className="text-[10px] uppercase text-emerald-400">Free</span>
-                                  )}
-                                </div>
-                                <p className="text-xs text-slate-500 mt-1 leading-relaxed">
-                                  {option.description}
-                                </p>
-                              </button>
-                            );
-                          })}
+                          <Label className="text-slate-400 text-xs font-bold uppercase tracking-widest">Video Engine</Label>
+                          <div className="space-y-2">
+                            {MODEL_OPTIONS.map((option) => {
+                              const isSelected = option.value === videoEngine;
+                              return (
+                                <button
+                                  key={option.value}
+                                  type="button"
+                                  onClick={() => setVideoEngine(option.value)}
+                                  className={`w-full text-left rounded-xl border px-4 py-3 transition-all duration-200 ${
+                                    isSelected
+                                      ? 'border-teal-500/50 bg-teal-500/10 shadow-[0_0_15px_rgba(20,184,166,0.15)] scale-[1.02]'
+                                      : 'border-white/5 bg-black/40 hover:border-white/20 hover:bg-black/60'
+                                  }`}
+                                >
+                                  <div className="flex items-center justify-between">
+                                    <span className={`text-sm font-bold ${isSelected ? 'text-teal-400' : 'text-slate-200'}`}>{option.name}</span>
+                                    {option.requiresKey && (
+                                      <span className="text-[10px] font-bold uppercase text-slate-500 bg-white/5 px-2 py-0.5 rounded">FAL_KEY</span>
+                                    )}
+                                    {!option.requiresKey && (
+                                      <span className="text-[10px] font-bold uppercase text-emerald-400 bg-emerald-500/10 px-2 py-0.5 rounded border border-emerald-500/20">Free</span>
+                                    )}
+                                  </div>
+                                  <p className="text-xs text-slate-400 mt-1.5 leading-relaxed">
+                                    {option.description}
+                                  </p>
+                                </button>
+                              );
+                            })}
+                          </div>
                         </div>
-                      </div>
 
-                      <div className="space-y-2">
-                        <Label className="text-slate-400 text-xs uppercase tracking-wider">Language</Label>
-                        <Select value={targetLang} onValueChange={(value) => {
-                          setTargetLang(value);
-                          const firstMatch = voices.find((voice) => voice.lang === value);
-                          if (firstMatch) {
-                            setSelectedVoice(firstMatch.id);
-                          }
-                        }}>
-                          <SelectTrigger className="w-full bg-slate-950 border-slate-800">
-                            <SelectValue placeholder="Select language" />
-                          </SelectTrigger>
-                          <SelectContent className="bg-slate-900 border-slate-800">
-                            {LANGUAGE_OPTIONS.map((option) => (
-                              <SelectItem key={option.value} value={option.value}>
-                                {option.label}
-                              </SelectItem>
-                            ))}
-                          </SelectContent>
-                        </Select>
-                      </div>
-
-                      <div className="space-y-2">
-                        <Label className="text-slate-400 text-xs uppercase tracking-wider">Voice</Label>
-                        <div className="flex gap-2">
-                          <Select value={selectedVoice} onValueChange={setSelectedVoice}>
-                            <SelectTrigger className="flex-1 bg-slate-950 border-slate-800">
-                              <SelectValue placeholder="Select voice" />
+                        <div className="space-y-3">
+                          <Label className="text-slate-400 text-xs font-bold uppercase tracking-widest">Language</Label>
+                          <Select value={targetLang} onValueChange={(value) => {
+                            setTargetLang(value);
+                            const firstMatch = voices.find((voice) => voice.lang === value);
+                            if (firstMatch) {
+                              setSelectedVoice(firstMatch.id);
+                            }
+                          }}>
+                            <SelectTrigger className="w-full bg-black/40 border-white/10 hover:border-white/20 transition-colors h-11 rounded-xl">
+                              <SelectValue placeholder="Select language" />
                             </SelectTrigger>
-                            <SelectContent className="bg-slate-900 border-slate-800">
-                              {filteredVoices.map((voice) => (
-                                <SelectItem key={voice.id} value={voice.id}>
-                                  {voice.gender === 'Female' ? 'F' : 'M'} {voice.name} ({voice.lang})
+                            <SelectContent className="bg-slate-900 border-white/10 rounded-xl shadow-2xl">
+                              {LANGUAGE_OPTIONS.map((option) => (
+                                <SelectItem key={option.value} value={option.value}>
+                                  {option.label}
                                 </SelectItem>
                               ))}
                             </SelectContent>
                           </Select>
-                          <Button
-                            variant="outline"
-                            size="icon"
-                            className="border-slate-800 hover:bg-indigo-500/20 hover:border-indigo-500/50 shrink-0"
-                            onClick={handlePreviewVoice}
-                            title="Preview voice"
-                          >
-                            {isPreviewPlaying ? (
-                              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                <rect x="6" y="4" width="4" height="16" rx="1" />
-                                <rect x="14" y="4" width="4" height="16" rx="1" />
-                              </svg>
-                            ) : (
-                              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M15.536 8.464a5 5 0 010 7.072M18.364 5.636a9 9 0 010 12.728M5.586 15H4a1 1 0 01-1-1v-4a1 1 0 011-1h1.586l4.707-4.707C10.923 3.663 12 4.109 12 5v14c0 .891-1.077 1.337-1.707.707L5.586 15z"></path>
-                              </svg>
-                            )}
-                          </Button>
                         </div>
+
+                        <div className="space-y-3">
+                          <Label className="text-slate-400 text-xs font-bold uppercase tracking-widest">Voice Model</Label>
+                          <div className="flex gap-2">
+                            <Select value={selectedVoice} onValueChange={setSelectedVoice}>
+                              <SelectTrigger className="flex-1 bg-black/40 border-white/10 hover:border-white/20 transition-colors h-11 rounded-xl">
+                                <SelectValue placeholder="Select voice" />
+                              </SelectTrigger>
+                              <SelectContent className="bg-slate-900 border-white/10 rounded-xl shadow-2xl">
+                                {filteredVoices.map((voice) => (
+                                  <SelectItem key={voice.id} value={voice.id}>
+                                    <div className="flex items-center gap-2">
+                                      <span className={`w-2 h-2 rounded-full ${voice.gender === 'Female' ? 'bg-pink-500' : 'bg-blue-500'}`}></span>
+                                      {voice.name}
+                                    </div>
+                                  </SelectItem>
+                                ))}
+                              </SelectContent>
+                            </Select>
+                            <Button
+                              variant="outline"
+                              className="h-11 w-11 shrink-0 rounded-xl bg-black/40 border-white/10 hover:bg-teal-500/20 hover:border-teal-500/50 hover:text-teal-400 transition-all"
+                              onClick={handlePreviewVoice}
+                              title="Preview voice"
+                            >
+                              {isPreviewPlaying ? (
+                                <svg className="w-4 h-4 animate-pulse" fill="currentColor" viewBox="0 0 24 24"><rect x="6" y="4" width="4" height="16" rx="1"/><rect x="14" y="4" width="4" height="16" rx="1"/></svg>
+                              ) : (
+                                <svg className="w-4 h-4 ml-0.5" fill="currentColor" viewBox="0 0 24 24"><path d="M8 5v14l11-7z"/></svg>
+                              )}
+                            </Button>
+                          </div>
+                        </div>
+
+                        {wordCount > 0 && (
+                          <div className="bg-black/30 rounded-xl p-4 border border-white/5 space-y-3">
+                            <div className="flex items-center justify-between">
+                              <Label className="text-slate-400 text-xs font-bold uppercase tracking-widest">Timing</Label>
+                              <span className="bg-teal-500/10 text-teal-400 font-mono font-bold px-2 py-0.5 rounded text-sm border border-teal-500/20">
+                                {Math.floor(estimatedDuration / 60)}:{String(estimatedDuration % 60).padStart(2, '0')}
+                              </span>
+                            </div>
+                            <div className="flex items-center gap-3">
+                              <input
+                                type="range"
+                                min={8}
+                                max={Math.max(90, autoEstimatedDuration * 2)}
+                                value={estimatedDuration}
+                                onChange={(e) => setManualDuration(Number(e.target.value))}
+                                className="flex-1 h-2 bg-white/10 rounded-lg appearance-none cursor-pointer accent-teal-500"
+                              />
+                              <input
+                                type="number"
+                                min={8}
+                                max={180}
+                                value={estimatedDuration}
+                                onChange={(e) => setManualDuration(Number(e.target.value) || 0)}
+                                className="w-16 bg-black/50 border border-white/10 rounded-lg px-2 py-1.5 text-sm text-center font-mono text-teal-400 focus:border-teal-500/50 outline-none"
+                              />
+                            </div>
+                            {manualDuration !== null && (
+                              <div className="text-right">
+                                <button
+                                  onClick={() => setManualDuration(null)}
+                                  className="text-[11px] text-slate-500 hover:text-teal-400 transition-colors font-medium"
+                                >
+                                  Reset to auto ({autoEstimatedDuration}s)
+                                </button>
+                              </div>
+                            )}
+                          </div>
+                        )}
                       </div>
 
-                      {wordCount > 0 && (
-                        <div className="bg-slate-950/50 rounded-lg p-3 border border-slate-800 space-y-2">
-                          <div className="flex items-center justify-between text-xs">
-                            <span className="text-slate-500">Est. Duration (seconds)</span>
-                            <span className="text-indigo-400 font-mono font-bold">
-                              {Math.floor(estimatedDuration / 60)}:{String(estimatedDuration % 60).padStart(2, '0')}
+                      <div className="pt-6 mt-6 border-t border-white/10">
+                        <Button
+                          className="w-full btn-glow bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-500 hover:to-teal-500 text-white font-bold py-7 rounded-xl text-lg shadow-[0_0_20px_rgba(20,184,166,0.3)] hover:shadow-[0_0_25px_rgba(20,184,166,0.5)] transition-all transform hover:-translate-y-0.5 active:translate-y-0 active:scale-[0.98]"
+                          disabled={isLoading}
+                          onClick={handleGenerate}
+                        >
+                          {isLoading ? (
+                            <div className="flex items-center justify-center gap-3">
+                              <div className="w-5 h-5 border-2 border-white/30 border-t-white rounded-full animate-spin"></div>
+                              <span>Rendering Short...</span>
+                            </div>
+                          ) : (
+                            <span className="flex items-center gap-2">
+                              <svg className="w-6 h-6" fill="currentColor" viewBox="0 0 24 24"><path d="M19.376 12.416L8.777 19.482A.5.5 0 018 19.066V4.934a.5.5 0 01.777-.416l10.599 7.066a.5.5 0 010 .832z"/></svg>
+                              Generate Short
                             </span>
-                          </div>
-                          <div className="flex items-center gap-2">
-                            <input
-                              type="range"
-                              min={8}
-                              max={Math.max(90, autoEstimatedDuration * 2)}
-                              value={estimatedDuration}
-                              onChange={(e) => setManualDuration(Number(e.target.value))}
-                              className="flex-1 accent-indigo-500 h-1.5"
-                            />
-                            <input
-                              type="number"
-                              min={8}
-                              max={180}
-                              value={estimatedDuration}
-                              onChange={(e) => setManualDuration(Number(e.target.value) || 0)}
-                              className="w-16 bg-slate-950 border border-slate-800 rounded px-2 py-1 text-xs text-center font-mono text-indigo-400"
-                            />
-                          </div>
-                          {manualDuration !== null && (
-                            <button
-                              onClick={() => setManualDuration(null)}
-                              className="text-[10px] text-slate-600 hover:text-slate-400 transition-colors"
-                            >
-                              Reset to auto ({autoEstimatedDuration}s)
-                            </button>
                           )}
-                        </div>
-                      )}
-                    </div>
-
-                    <div className="pt-6 mt-6 border-t border-slate-800">
-                      <Button
-                        className="w-full bg-indigo-600 hover:bg-indigo-500 text-white font-semibold py-6 rounded-lg transition-all transform active:scale-[0.98]"
-                        disabled={isLoading}
-                        onClick={handleGenerate}
-                      >
-                        {isLoading ? (
-                          <div className="flex items-center justify-center gap-2">
-                            <svg className="animate-spin h-5 w-5" viewBox="0 0 24 24">
-                              <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" fill="none" />
-                              <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z" />
-                            </svg>
-                            <span>Rendering Short...</span>
-                          </div>
-                        ) : (
-                          <span className="flex items-center gap-2">
-                            <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M14.752 11.168l-3.197-2.132A1 1 0 0010 9.87v4.263a1 1 0 001.555.832l3.197-2.132a1 1 0 000-1.664z"></path>
-                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M21 12a9 9 0 11-18 0 9 9 0 0118 0z"></path>
-                            </svg>
-                            Generate Short
-                          </span>
-                        )}
-                      </Button>
+                        </Button>
+                      </div>
                     </div>
                   </div>
                 </div>
