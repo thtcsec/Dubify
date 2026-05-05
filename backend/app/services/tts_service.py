@@ -274,7 +274,9 @@ class TTSService:
         text = normalize_for_tts(text, self.target_lang)
             
         if self.provider == "f5tts" and self.f5_service.is_available() and ref_audio_path and ref_text:
-            return await self.f5_service.clone_voice(ref_audio_path, ref_text, text, output_path)
+            if await self.f5_service.clone_voice(ref_audio_path, ref_text, text, output_path):
+                return True
+            logger.warning(f"F5TTS cloning failed for text '{text[:20]}...', falling back to default TTS provider.")
 
         if self._use_local_tts():
             try:

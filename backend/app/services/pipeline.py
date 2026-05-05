@@ -33,7 +33,7 @@ class DubbingPipeline:
         transcript_path = session_dir / "transcript.json"
         concat_list_path = session_dir / "concat_list.txt"
         final_audio = session_dir / "dubbed_audio_final.wav"
-        output_video = settings.OUTPUT_DIR / f"dubbed_{video_path.name}"
+        output_video = settings.OUTPUT_DIR / f"{session_id}_dubbed_{video_path.name}"
 
         try:
             # 2. Extract Audio
@@ -54,15 +54,15 @@ class DubbingPipeline:
 
             # 3. Transcribe & Merge
             logger.info("Step 2/5: Transcribing...")
-            raw_segments = self.asr_service.transcribe(asr_input_audio)
+            raw_segments = await asyncio.to_thread(self.asr_service.transcribe, asr_input_audio)
             if not raw_segments:
                 raise Exception("Transcription returned no segments. The audio may be silent or corrupted.")
-            merged_segments = self.asr_service.merge_segments_by_sentence(raw_segments)
-            self.asr_service.save_transcript(merged_segments, transcript_path)
+            merged_segments = await asyncio.to_thread(self.asr_service.merge_segments_by_sentence, raw_segments)
+            await asyncio.to_thread(self.asr_service.save_transcript, merged_segments, transcript_path)
 
             # 4. Translate
             logger.info("Step 3/5: Translating %d segments to %s...", len(merged_segments), self.target_lang)
-            translated_segments = self.translate_service.translate_batch(merged_segments)
+            translated_segments = await asyncio.to_thread(self.translate_service.translate_batch, merged_segments)
 
             # Extract audio slices for voice cloning if F5-TTS is enabled
             if settings.F5TTS_API_URL:
@@ -75,9 +75,20 @@ class DubbingPipeline:
                     duration_str = str(seg['end'] - seg['start'])
                     cut_cmd = [
                         "ffmpeg", "-y", "-ss", start_str, "-t", duration_str,
-                        "-i", str(asr_input_audio), "-c", "copy", str(slice_path)
+                        "-i", str(asr_input_audio), "-c:a", "pcm_s16le", "-ar", "16000", "-ac", "1", str(slice_path)
                     ]
-                    subprocess.run(cut_cmd, stdout=subprocess.DEVNULL, stderr=subprocess.PIPE, timeout=30)
+                    proc = await asyncio.create_subprocess_exec(
+                        *cut_cmd, stdout=asyncio.subprocess.DEVNULL, stderr=asyncio.subprocess.PIPE
+                    )
+                    try:
+                        _, stderr = await asyncio.wait_for(proc.communicate(), timeout=30.0)
+                        if proc.returncode != 0:
+                            logger.warning(f"FFmpeg slicing failed: {stderr.decode(errors='ignore')}")
+                    except asyncio.TimeoutError:
+                        proc.kill()
+                        await proc.communicate()
+                        logger.warning(f"FFmpeg slicing timed out for segment {i}")
+                        
                     if slice_path.exists():
                         seg['ref_audio'] = str(slice_path)
             
@@ -108,13 +119,22 @@ class DubbingPipeline:
                 mixed_audio = session_dir / "dubbed_audio_with_bgm.wav"
                 mix_cmd = [
                     "ffmpeg", "-y", "-i", str(final_audio), "-i", str(bgm_audio),
-                    "-filter_complex", "amix=inputs=2:duration=first:dropout_transition=3",
+                    "-filter_complex", "[1:a]volume=0.15[bgm];[0:a][bgm]amix=inputs=2:duration=first:dropout_transition=3[aout]",
+                    "-map", "[aout]", "-ac", "2",
                     str(mixed_audio)
                 ]
+                proc = await asyncio.create_subprocess_exec(
+                    *mix_cmd, stdout=asyncio.subprocess.DEVNULL, stderr=asyncio.subprocess.PIPE
+                )
                 try:
-                    subprocess.run(mix_cmd, check=True, stdout=subprocess.DEVNULL, stderr=subprocess.PIPE, timeout=120)
-                except subprocess.CalledProcessError as e:
-                    logger.warning("BGM mixing failed: %s. Continuing without BGM.", e.stderr.decode() if e.stderr else str(e))
+                    _, stderr = await asyncio.wait_for(proc.communicate(), timeout=120.0)
+                    if proc.returncode != 0:
+                        logger.warning(f"BGM mixing failed: {stderr.decode(errors='ignore')}")
+                except asyncio.TimeoutError:
+                    proc.kill()
+                    await proc.communicate()
+                    logger.warning("BGM mixing timed out")
+                    
                 if mixed_audio.exists() and mixed_audio.stat().st_size > 0:
                     final_audio_with_bgm = mixed_audio
             
@@ -127,3 +147,8 @@ class DubbingPipeline:
         except Exception as e:
             logger.error("Pipeline failed for session %s: %s", session_id, e, exc_info=True)
             return None
+        finally:
+            if getattr(settings, 'CLEANUP_TEMP', True):
+                import shutil
+                shutil.rmtree(session_dir, ignore_errors=True)
+

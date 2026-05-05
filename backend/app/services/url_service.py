@@ -128,6 +128,9 @@ class URLService:
             })
         else:
             opts["format"] = "best"
+            
+        # Bypass YouTube bot protection by forcing mobile clients
+        opts["extractor_args"] = {"youtube": {"player_client": ["android", "ios", "web"]}}
 
         return opts
 
@@ -223,8 +226,15 @@ class URLService:
             hints.append("Open the video once in your browser, then retry in Dubify immediately.")
             hints.append("Set YTDLP_COOKIES_FROM_BROWSERS in .env (example: chrome,edge).")
             hints.append("Or export cookies.txt and set YTDLP_COOKIE_FILE in .env.")
+        
         if errors:
-            hints.append(f"Last extractor error: {errors[-1][:300]}")
+            # Filter out generic "browser not found" errors so the real error (like age restriction or geo-block) is shown
+            meaningful = [e for e in errors if "could not find" not in e.lower() or "database" not in e.lower()]
+            if meaningful:
+                hints.append(f"Real extractor error: {meaningful[0][:300]}")
+            else:
+                hints.append(f"Last extractor error: {errors[-1][:300]}")
+                
         if "douyin.com" in url:
             hints.append("Optional: configure DOUYIN_FALLBACK_API_BASE and DOUYIN_FALLBACK_API_KEY in .env for a stable external parser fallback.")
         return hints
