@@ -10,6 +10,7 @@ from typing import Optional, Tuple, Callable
 import numpy as np
 from PIL import Image
 from app.core.config import settings
+from app.utils.subtitles import wrap_subtitle_text
 
 logger = logging.getLogger(__name__)
 
@@ -75,6 +76,95 @@ class VideoService:
         return escaped
 
     @staticmethod
+    def get_video_size(file_path: Path) -> Tuple[int, int]:
+        """Return (width, height) of the first video stream."""
+        try:
+            command = [
+                "ffprobe",
+                "-v",
+                "error",
+                "-select_streams",
+                "v:0",
+                "-show_entries",
+                "stream=width,height",
+                "-of",
+                "csv=p=0:s=x",
+                str(file_path),
+            ]
+            result = subprocess.run(command, capture_output=True, text=True, check=True)
+            w_str, h_str = result.stdout.strip().split("x")
+            return max(int(w_str), 1), max(int(h_str), 1)
+        except Exception as e:
+            logger.warning("Could not read video size for %s: %s", file_path, e)
+            return VideoService.ASPECT_RATIOS["16:9"]
+
+    @staticmethod
+    def _subtitle_style_for_height(height: int) -> Tuple[int, int]:
+        """Font size and bottom margin scaled to output resolution."""
+        font_size = max(16, min(26, int(height * 0.032)))
+        margin_v = max(32, int(height * 0.075))
+        return font_size, margin_v
+
+    @staticmethod
+    def _parse_srt(srt_path: Path) -> list[tuple[float, float, str]]:
+        cues: list[tuple[float, float, str]] = []
+        content = srt_path.read_text(encoding="utf-8", errors="ignore")
+        blocks = re.split(r"\r?\n\r?\n", content.strip())
+
+        def parse_ts(value: str) -> float:
+            value = value.strip().replace(",", ".")
+            hh, mm, rest = value.split(":")
+            ss, ms = rest.split(".")
+            return int(hh) * 3600 + int(mm) * 60 + int(ss) + int(ms.ljust(3, "0")[:3]) / 1000
+
+        for block in blocks:
+            lines = [line.strip() for line in block.splitlines() if line.strip()]
+            if len(lines) < 2:
+                continue
+            time_line_index = 1 if re.fullmatch(r"\d+", lines[0]) else 0
+            if time_line_index >= len(lines) or "-->" not in lines[time_line_index]:
+                continue
+            start_str, end_str = [
+                part.strip().split(" ")[0] for part in lines[time_line_index].split("-->")
+            ]
+            text = "\n".join(lines[time_line_index + 1 :]).strip()
+            if text:
+                cues.append((parse_ts(start_str), parse_ts(end_str), text))
+        return cues
+
+    @staticmethod
+    def _create_burn_ass(
+        cues: list[tuple[float, float, str]],
+        output_path: Path,
+        canvas_size: Tuple[int, int],
+    ) -> Path:
+        """ASS subtitles with PlayRes matching video — avoids giant SRT burn scaling."""
+        width, height = canvas_size
+        font_size, margin_v = VideoService._subtitle_style_for_height(height)
+        lines = [
+            "[Script Info]",
+            "ScriptType: v4.00+",
+            f"PlayResX: {width}",
+            f"PlayResY: {height}",
+            "WrapStyle: 2",
+            "ScaledBorderAndShadow: yes",
+            "",
+            "[V4+ Styles]",
+            "Format: Name,Fontname,Fontsize,PrimaryColour,SecondaryColour,OutlineColour,BackColour,Bold,Italic,Underline,StrikeOut,ScaleX,ScaleY,Spacing,Angle,BorderStyle,Outline,Shadow,Alignment,MarginL,MarginR,MarginV,Encoding",
+            f"Style: Default,Arial,{font_size},&H00FFFFFF,&H000000FF,&H00101010,&H80000000,0,0,0,0,100,100,0,0,1,2,0,2,48,48,{margin_v},1",
+            "",
+            "[Events]",
+            "Format: Layer,Start,End,Style,Name,MarginL,MarginR,MarginV,Effect,Text",
+        ]
+        for start, end, text in cues:
+            wrapped = wrap_subtitle_text(text.replace("\n", " "))
+            lines.append(
+                f"Dialogue: 0,{VideoService._format_ass_time(start)},{VideoService._format_ass_time(end)},Default,,0,0,0,,{VideoService._escape_ass_text(wrapped)}"
+            )
+        output_path.write_text("\n".join(lines), encoding="utf-8")
+        return output_path
+
+    @staticmethod
     def _parse_vtt(vtt_path: Path) -> list[tuple[float, float, str]]:
         cues: list[tuple[float, float, str]] = []
         content = vtt_path.read_text(encoding="utf-8", errors="ignore")
@@ -101,7 +191,7 @@ class VideoService:
     @staticmethod
     def _create_pop_ass(vtt_path: Path, output_path: Path, canvas_size: Tuple[int, int]) -> Path:
         width, height = canvas_size
-        font_size = max(42, int(min(width, height) * 0.055))
+        font_size, margin_v = VideoService._subtitle_style_for_height(height)
         cues = VideoService._parse_vtt(vtt_path)
         lines = [
             "[Script Info]",
@@ -113,7 +203,7 @@ class VideoService:
             "",
             "[V4+ Styles]",
             "Format: Name,Fontname,Fontsize,PrimaryColour,SecondaryColour,OutlineColour,BackColour,Bold,Italic,Underline,StrikeOut,ScaleX,ScaleY,Spacing,Angle,BorderStyle,Outline,Shadow,Alignment,MarginL,MarginR,MarginV,Encoding",
-            f"Style: Pop,Arial,{font_size},&H00FFFFFF,&H0000F0FF,&H00111111,&H66000000,-1,0,0,0,100,100,0,0,1,3,0,2,80,80,{max(70, int(height * 0.08))},1",
+            f"Style: Pop,Arial,{font_size},&H00FFFFFF,&H0000F0FF,&H00111111,&H66000000,-1,0,0,0,100,100,0,0,1,2,0,2,64,64,{margin_v},1",
             "",
             "[Events]",
             "Format: Layer,Start,End,Style,Name,MarginL,MarginR,MarginV,Effect,Text",
@@ -241,7 +331,39 @@ class VideoService:
                 shutil.copyfile(input_file, output_file)
                 return True
 
-            # Try rubberband first (higher quality), fallback to atempo
+            # Large mismatch: trim or pad instead of extreme time-stretch (sounds more natural).
+            if ratio > 1.28:
+                command = [
+                    "ffmpeg",
+                    "-y",
+                    "-i",
+                    str(input_file),
+                    "-af",
+                    f"atrim=0:{target_duration:.3f},asetpts=PTS-STARTPTS",
+                    str(output_file),
+                ]
+                subprocess.run(
+                    command, check=True, stdout=subprocess.DEVNULL, stderr=subprocess.PIPE
+                )
+                return output_file.exists() and output_file.stat().st_size > 0
+
+            if ratio < 0.78:
+                pad = max(0.0, target_duration - current_duration)
+                command = [
+                    "ffmpeg",
+                    "-y",
+                    "-i",
+                    str(input_file),
+                    "-af",
+                    f"apad=pad_dur={pad:.3f}",
+                    str(output_file),
+                ]
+                subprocess.run(
+                    command, check=True, stdout=subprocess.DEVNULL, stderr=subprocess.PIPE
+                )
+                return output_file.exists() and output_file.stat().st_size > 0
+
+            # Mild stretch: rubberband first, then atempo chain.
             filter_str = f"rubberband=tempo={ratio:.4f}"
             command = [
                 "ffmpeg", "-y", "-i", str(input_file),
@@ -292,9 +414,15 @@ class VideoService:
         try:
             logger.info(f"Merging {'audio and subtitles' if srt_path else 'audio'} into {video_path}")
             if srt_path and srt_path.exists():
-                escaped_srt = VideoService._ffmpeg_subtitle_path(srt_path)
-                filter_str = f"subtitles='{escaped_srt}':force_style='FontName=Arial,FontSize=24,BorderStyle=3,Outline=1,OutlineColour=&H80000000,Shadow=0,MarginV=20'"
-                
+                width, height = VideoService.get_video_size(video_path)
+                ass_path = srt_path.with_suffix(".burn.ass")
+                cues = VideoService._parse_srt(srt_path)
+                if not cues:
+                    cues = VideoService._parse_vtt(srt_path)
+                VideoService._create_burn_ass(cues, ass_path, (width, height))
+                escaped_ass = VideoService._ffmpeg_subtitle_path(ass_path)
+                filter_str = f"ass='{escaped_ass}'"
+
                 command = [
                     "ffmpeg", "-y", "-i", str(video_path), "-i", str(audio_path),
                     "-vf", filter_str,

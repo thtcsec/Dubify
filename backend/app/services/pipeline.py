@@ -76,6 +76,9 @@ class DubbingPipeline:
             merged_segments = await asyncio.to_thread(
                 self.asr_service.merge_segments_by_sentence, raw_segments
             )
+            merged_segments = await asyncio.to_thread(
+                self.asr_service.split_oversized_segments, merged_segments
+            )
             await asyncio.to_thread(self.asr_service.save_transcript, merged_segments, transcript_path)
             report.stage("Step 3/6: Transcription complete.", 40)
 

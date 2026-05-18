@@ -98,57 +98,124 @@ class ASRService:
         return segments_out
 
     @staticmethod
-    def merge_segments_by_sentence(segments: List[Dict[str, Any]], max_duration: float = 10.0) -> List[Dict[str, Any]]:
+    def merge_segments_by_sentence(
+        segments: List[Dict[str, Any]],
+        max_duration: float = 6.5,
+        pause_threshold: float = 0.55,
+        max_chars: int = 78,
+    ) -> List[Dict[str, Any]]:
         """
-        Merge short segments into sentences to improve translation context.
-        Logic adapted from AutoDub.
+        Merge Whisper fragments into scene-friendly cues (pause + sentence boundaries).
         """
         import re
-        sentence_endings = re.compile(r'[.!?;:]\s*$')
-        merged = []
-        current_group = {'text': '', 'start': None, 'end': None}
+
+        sentence_endings = re.compile(r'[.!?…:;]\s*$')
+        merged: List[Dict[str, Any]] = []
+        current_group = {"text": "", "start": None, "end": None}
+
+        def flush() -> None:
+            nonlocal current_group
+            if current_group["text"] and current_group["start"] is not None:
+                merged.append(
+                    {
+                        "text": current_group["text"].strip(),
+                        "start": current_group["start"],
+                        "end": current_group["end"],
+                    }
+                )
+            current_group = {"text": "", "start": None, "end": None}
 
         for i, seg in enumerate(segments):
-            text = seg['text'].strip()
+            text = seg["text"].strip()
             if not text:
                 continue
 
-            if current_group['start'] is None:
-                current_group['start'] = seg['start']
+            if current_group["start"] is None:
+                current_group["start"] = seg["start"]
 
-            if current_group['text']:
-                current_group['text'] += ' ' + text
+            if current_group["text"]:
+                current_group["text"] += " " + text
             else:
-                current_group['text'] = text
+                current_group["text"] = text
 
-            current_group['end'] = seg['end']
+            current_group["end"] = seg["end"]
 
-            duration = current_group['end'] - current_group['start']
-            has_sentence_end = sentence_endings.search(text)
-            
-            # Check for significant pause between segments
+            duration = current_group["end"] - current_group["start"]
+            has_sentence_end = bool(sentence_endings.search(text))
+            char_count = len(current_group["text"])
+
             has_pause = False
             if i + 1 < len(segments):
-                next_start = segments[i + 1]['start']
-                pause_duration = next_start - seg['end']
-                has_pause = pause_duration > 0.8 # threshold for break
+                pause_duration = segments[i + 1]["start"] - seg["end"]
+                has_pause = pause_duration >= pause_threshold
 
-            if has_sentence_end or duration >= max_duration or has_pause:
-                merged.append({
-                    'text': current_group['text'].strip(),
-                    'start': current_group['start'],
-                    'end': current_group['end']
-                })
-                current_group = {'text': '', 'start': None, 'end': None}
+            if (
+                has_sentence_end
+                or duration >= max_duration
+                or has_pause
+                or char_count >= max_chars
+            ):
+                flush()
 
-        if current_group['text']:
-            merged.append({
-                'text': current_group['text'].strip(),
-                'start': current_group['start'],
-                'end': current_group['end']
-            })
+        if current_group["text"]:
+            flush()
 
         return merged
+
+    @staticmethod
+    def split_oversized_segments(
+        segments: List[Dict[str, Any]],
+        max_chars: int = 85,
+        max_duration: float = 6.0,
+    ) -> List[Dict[str, Any]]:
+        """Split long cues so TTS/subtitles stay readable and sync more naturally."""
+        result: List[Dict[str, Any]] = []
+
+        for seg in segments:
+            text = (seg.get("text") or "").strip()
+            start = float(seg["start"])
+            end = float(seg["end"])
+            duration = max(end - start, 0.05)
+
+            if len(text) <= max_chars and duration <= max_duration:
+                result.append({"text": text, "start": start, "end": end})
+                continue
+
+            words = text.split()
+            chunks: list[str] = []
+            buf: list[str] = []
+            buf_len = 0
+            target_chars = max(28, max_chars // 2)
+
+            for word in words:
+                extra = len(word) + (1 if buf else 0)
+                if buf and buf_len + extra > target_chars:
+                    chunks.append(" ".join(buf))
+                    buf = [word]
+                    buf_len = len(word)
+                else:
+                    buf.append(word)
+                    buf_len += extra
+            if buf:
+                chunks.append(" ".join(buf))
+
+            if len(chunks) <= 1:
+                result.append({"text": text, "start": start, "end": end})
+                continue
+
+            total_weight = sum(max(len(c), 1) for c in chunks)
+            cursor = start
+            for idx, chunk in enumerate(chunks):
+                share = max(len(chunk), 1) / total_weight
+                chunk_dur = duration * share
+                if idx == len(chunks) - 1:
+                    chunk_end = end
+                else:
+                    chunk_end = min(end, cursor + chunk_dur)
+                result.append({"text": chunk, "start": cursor, "end": chunk_end})
+                cursor = chunk_end
+
+        return result
 
     @staticmethod
     def save_transcript(segments: List[Dict[str, Any]], output_path: Path):
