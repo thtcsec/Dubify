@@ -8,6 +8,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '../components/ui/tabs'
 import { DubbingProgress } from '../components/DubbingProgress';
 import { isTimeoutError, extractApiErrorMessage } from '../lib/errors';
 import api from '../lib/api';
+import { useI18n } from '@/i18n/I18nProvider';
 
 interface Voice {
   id: string;
@@ -73,6 +74,7 @@ const MODEL_OPTIONS = [
 ];
 
 export function ShortsView({ targetLang, setTargetLang }: ShortsViewProps) {
+  const { t } = useI18n();
   const [mode, setMode] = useState<'prompt' | 'script'>('prompt');
   const [videoEngine, setVideoEngine] = useState('local');
   const [prompt, setPrompt] = useState('');
@@ -179,10 +181,8 @@ export function ShortsView({ targetLang, setTargetLang }: ShortsViewProps) {
     <>
       {!jobId && (
         <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }}>
-          <h1 className="text-3xl font-bold mb-2">Auto Shorts</h1>
-          <p className="text-slate-400 mb-8">
-            Caption-first shorts from a prompt or script, tuned for 9:16 platforms.
-          </p>
+          <h1 className="text-3xl font-bold mb-2">{t.shorts.title}</h1>
+          <p className="text-slate-400 mb-8">{t.shorts.subtitle}</p>
         </motion.div>
       )}
 

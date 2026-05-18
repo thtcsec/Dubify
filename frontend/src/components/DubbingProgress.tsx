@@ -1,12 +1,13 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from '../components/ui/card';
-import { Progress } from '../components/ui/progress';
+
 import { Badge } from '../components/ui/badge';
 import { CheckCircle, XCircle, Loader2, Download, Ban, PauseCircle, Play } from 'lucide-react';
 import api from '../lib/api';
 import { apiOrigin } from '../lib/api';
 import { Button } from './ui/button';
 import { useJobEvents } from '../lib/jobEvents';
+import { useI18n } from '@/i18n/I18nProvider';
 
 interface JobStatusResponse {
   status: 'pending' | 'processing' | 'paused' | 'completed' | 'failed' | 'cancelled';
@@ -23,7 +24,9 @@ interface DubbingProgressProps {
 }
 
 export const DubbingProgress = ({ jobId, onComplete, onError }: DubbingProgressProps) => {
+  const { t } = useI18n();
   const [data, setData] = useState<JobStatusResponse | null>(null);
+  const [sseConnected, setSseConnected] = useState(false);
   const intervalRef = useRef<number | null>(null);
 
   const loadJob = useCallback(async () => {
@@ -40,22 +43,37 @@ export const DubbingProgress = ({ jobId, onComplete, onError }: DubbingProgressP
     const timeoutId = window.setTimeout(() => {
       void loadJob();
     }, 0);
+    return () => window.clearTimeout(timeoutId);
+  }, [jobId, loadJob]);
+
+  useEffect(() => {
+    if (sseConnected) {
+      if (intervalRef.current) {
+        window.clearInterval(intervalRef.current);
+        intervalRef.current = null;
+      }
+      return;
+    }
     intervalRef.current = window.setInterval(() => {
       void loadJob();
     }, 20000);
-
     return () => {
-      window.clearTimeout(timeoutId);
-      if (intervalRef.current) clearInterval(intervalRef.current);
+      if (intervalRef.current) {
+        window.clearInterval(intervalRef.current);
+        intervalRef.current = null;
+      }
     };
-  }, [jobId, loadJob]);
+  }, [jobId, loadJob, sseConnected]);
 
-  useJobEvents<JobStatusResponse>((payload) => {
-    if (payload.job_id !== jobId) {
-      return;
-    }
-    setData(payload.job);
-  });
+  useJobEvents<JobStatusResponse>(
+    (payload) => {
+      if (payload.job_id !== jobId) {
+        return;
+      }
+      setData(payload.job);
+    },
+    { onConnectionChange: setSseConnected },
+  );
 
   useEffect(() => {
     if (!data) return;
@@ -122,11 +140,11 @@ export const DubbingProgress = ({ jobId, onComplete, onError }: DubbingProgressP
                isCancelled ? <div className="p-1.5 bg-orange-500/20 rounded-lg"><Ban className="text-orange-400 w-5 h-5" /></div> :
                isPaused ? <div className="p-1.5 bg-yellow-500/20 rounded-lg"><PauseCircle className="text-yellow-400 w-5 h-5" /></div> :
                <div className="p-1.5 bg-indigo-500/20 rounded-lg"><Loader2 className="animate-spin text-indigo-400 w-5 h-5" /></div>}
-              {isCompleted ? 'Video Ready!' :
-               isFailed ? 'Generation Failed' :
-               isCancelled ? 'Job Cancelled' :
-               isPaused ? 'Job Paused' :
-               'Generating Video...'}
+              {isCompleted ? t.progress.completed :
+               isFailed ? t.progress.failed :
+               isCancelled ? t.progress.cancelled :
+               isPaused ? t.progress.paused :
+               t.progress.processing}
             </span>
             <Badge variant={
               isCompleted ? "default" :
@@ -141,11 +159,11 @@ export const DubbingProgress = ({ jobId, onComplete, onError }: DubbingProgressP
         <CardContent className="pt-6 space-y-6">
           <div className="space-y-3">
             <div className="flex justify-between text-xs font-bold uppercase tracking-widest text-slate-400">
-              <span>Progress</span>
+              <span>{t.progress.progressLabel}</span>
               <span className="text-indigo-400">
                 {isCompleted ? '100%' :
-                 isCancelled ? 'Cancelled' :
-                 isFailed ? 'Failed' :
+                 isCancelled ? t.progress.cancelledLabel :
+                 isFailed ? t.progress.failedLabel :
                  `${Number(progressValue).toFixed(progressValue % 1 === 0 ? 0 : 1)}%`}
               </span>
             </div>
@@ -163,12 +181,12 @@ export const DubbingProgress = ({ jobId, onComplete, onError }: DubbingProgressP
 
         {/* Live status message */}
         <div className="text-sm text-slate-400 italic min-h-[1.5rem]">
-          {isCompleted ? '✅ Video ready for download!' :
+          {isCompleted ? `✅ ${t.progress.readyMessage}` :
            isFailed ? `❌ ${data.error}` :
-           isCancelled ? '🚫 Job was cancelled by user.' :
-           isPaused ? '⏸️ Job is paused. Resume to continue.' :
+           isCancelled ? `🚫 ${t.progress.cancelledMessage}` :
+           isPaused ? `⏸️ ${t.progress.pausedMessage}` :
            data.message ? `⏳ ${data.message}` :
-           'Waiting in queue...'}
+           t.progress.pending}
         </div>
 
         {/* Action buttons */}
@@ -176,20 +194,20 @@ export const DubbingProgress = ({ jobId, onComplete, onError }: DubbingProgressP
           {isProcessing && (
             <>
               <Button variant="outline" className="flex-1 text-yellow-400 border-yellow-500/20 hover:bg-yellow-500/10" onClick={handlePause}>
-                <PauseCircle className="w-4 h-4 mr-2" /> Pause
+                <PauseCircle className="w-4 h-4 mr-2" /> {t.progress.pause}
               </Button>
               <Button variant="outline" className="flex-1 text-red-400 border-red-500/20 hover:bg-red-500/10" onClick={handleCancel}>
-                <Ban className="w-4 h-4 mr-2" /> Cancel
+                <Ban className="w-4 h-4 mr-2" /> {t.progress.cancel}
               </Button>
             </>
           )}
           {isPaused && (
             <>
               <Button variant="outline" className="flex-1 text-green-400 border-green-500/20 hover:bg-green-500/10" onClick={handleResume}>
-                <Play className="w-4 h-4 mr-2" /> Resume
+                <Play className="w-4 h-4 mr-2" /> {t.progress.resume}
               </Button>
               <Button variant="outline" className="flex-1 text-red-400 border-red-500/20 hover:bg-red-500/10" onClick={handleCancel}>
-                <Ban className="w-4 h-4 mr-2" /> Cancel
+                <Ban className="w-4 h-4 mr-2" /> {t.progress.cancel}
               </Button>
             </>
           )}
@@ -225,7 +243,7 @@ export const DubbingProgress = ({ jobId, onComplete, onError }: DubbingProgressP
               a.click();
               document.body.removeChild(a);
             }}>
-              <Download className="w-5 h-5 mr-2" /> Download Result
+              <Download className="w-5 h-5 mr-2" /> {t.progress.download}
             </Button>
           </div>
         )}

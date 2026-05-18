@@ -12,6 +12,12 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import api from '@/lib/api';
 import { useJobEvents } from '@/lib/jobEvents';
+import { useI18n } from '@/i18n/I18nProvider';
+import {
+  engineModeToPreset,
+  presetToEngineMode,
+  type ProcessingPreset,
+} from '@/lib/processingPreset';
 
 // ─── History View (Real data from /jobs endpoint) ───────────────────────────
 
@@ -325,6 +331,7 @@ export function HistoryView() {
 // ─── Settings View (with Gemini + Groq keys) ───────────────────────────────
 
 export function SettingsView() {
+  const { t } = useI18n();
   const [config, setConfig] = useState<SettingsResponse | null>(null);
   const [showKeys, setShowKeys] = useState<Record<string, boolean>>({});
   const [isEditing, setIsEditing] = useState(false);
@@ -334,8 +341,7 @@ export function SettingsView() {
   const [anthropicKey, setAnthropicKey] = useState("");
   const [geminiKey, setGeminiKey] = useState("");
   const [groqKey, setGroqKey] = useState("");
-  const [processingEngine, setProcessingEngine] = useState<'local' | 'cloud'>('local');
-  const [processingMode, setProcessingMode] = useState<'offline' | 'hybrid' | 'online'>('hybrid');
+  const [processingPreset, setProcessingPreset] = useState<ProcessingPreset>('hybrid');
   const [saveWarning, setSaveWarning] = useState<string | null>(null);
 
   useEffect(() => {
@@ -349,8 +355,9 @@ export function SettingsView() {
           setAnthropicKey(response.data.anthropic_api_key || "");
           setGeminiKey(response.data.gemini_api_key || "");
           setGroqKey(response.data.groq_api_key || "");
-          setProcessingEngine(response.data.processing_engine || 'local');
-          setProcessingMode(response.data.processing_mode || 'hybrid');
+          setProcessingPreset(
+            engineModeToPreset(response.data.processing_engine, response.data.processing_mode),
+          );
         }
       } catch (error) {
         console.error('Failed to fetch config', error);
@@ -363,9 +370,10 @@ export function SettingsView() {
   const handleSave = async () => {
     setIsSaving(true);
     try {
+      const { processing_engine, processing_mode } = presetToEngineMode(processingPreset);
       const saveResponse = await api.post<{ warning?: string | null }>('/settings', {
-        processing_engine: processingEngine,
-        processing_mode: processingMode,
+        processing_engine,
+        processing_mode,
         openai_api_key: openaiKey,
         anthropic_api_key: anthropicKey,
         gemini_api_key: geminiKey,
@@ -379,11 +387,12 @@ export function SettingsView() {
       setAnthropicKey(response.data.anthropic_api_key || "");
       setGeminiKey(response.data.gemini_api_key || "");
       setGroqKey(response.data.groq_api_key || "");
-      setProcessingEngine(response.data.processing_engine || 'local');
-      setProcessingMode(response.data.processing_mode || 'hybrid');
+      setProcessingPreset(
+        engineModeToPreset(response.data.processing_engine, response.data.processing_mode),
+      );
       setIsEditing(false);
     } catch {
-      alert("Failed to save configuration to .env");
+      alert(t.settings.saveFailed);
     } finally {
       setIsSaving(false);
     }
@@ -407,9 +416,9 @@ export function SettingsView() {
     <div className="space-y-6">
       <div>
         <h1 className="text-3xl font-bold mb-2">
-          <span className="bg-gradient-to-br from-indigo-500 to-purple-500 text-transparent bg-clip-text">System Settings</span>
+          <span className="bg-gradient-to-br from-indigo-500 to-purple-500 text-transparent bg-clip-text">{t.settings.title}</span>
         </h1>
-        <p className="text-slate-400">Manage your local environment and AI provider keys.</p>
+        <p className="text-slate-400">{t.settings.subtitle}</p>
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
@@ -418,7 +427,7 @@ export function SettingsView() {
           <div className="absolute -inset-0.5 bg-gradient-to-r from-indigo-500/10 to-purple-500/10 rounded-2xl blur opacity-0 group-hover:opacity-100 transition duration-500"></div>
           <Card className="relative bg-slate-900/80 backdrop-blur-xl border border-white/10 shadow-2xl overflow-hidden rounded-2xl h-full">
           <CardHeader>
-            <CardTitle className="flex items-center gap-2 text-lg"><HardDrive className="w-5 h-5 text-primary" /> Environment Paths</CardTitle>
+            <CardTitle className="flex items-center gap-2 text-lg"><HardDrive className="w-5 h-5 text-primary" /> {t.settings.envPaths}</CardTitle>
           </CardHeader>
           <CardContent className="space-y-4">
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
@@ -448,50 +457,38 @@ export function SettingsView() {
           <div className="absolute -inset-0.5 bg-gradient-to-r from-blue-500/10 to-teal-500/10 rounded-2xl blur opacity-0 group-hover:opacity-100 transition duration-500"></div>
           <Card className="relative bg-slate-900/80 backdrop-blur-xl border border-white/10 shadow-2xl overflow-hidden rounded-2xl h-full">
           <CardHeader>
-            <CardTitle className="flex items-center gap-2 text-lg"><Globe className="w-5 h-5 text-primary" /> Default Models</CardTitle>
+            <CardTitle className="flex items-center gap-2 text-lg"><Globe className="w-5 h-5 text-primary" /> {t.settings.defaultModels}</CardTitle>
           </CardHeader>
           <CardContent className="space-y-4">
             <div className="space-y-2">
-              <Label className="text-[10px] uppercase text-slate-500">Processing Engine</Label>
-              <Select value={processingEngine} onValueChange={(value: 'local' | 'cloud') => setProcessingEngine(value)} disabled={!isEditing}>
+              <Label className="text-[10px] uppercase text-slate-500">{t.settings.presetLabel}</Label>
+              <Select
+                value={processingPreset}
+                onValueChange={(value: ProcessingPreset) => setProcessingPreset(value)}
+                disabled={!isEditing}
+              >
                 <SelectTrigger className="bg-black/20 border-white/10">
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="local">Local Engine</SelectItem>
-                  <SelectItem value="cloud">Cloud Engine</SelectItem>
+                  <SelectItem value="hybrid">{t.settings.presets.hybrid.label}</SelectItem>
+                  <SelectItem value="local_offline">{t.settings.presets.local_offline.label}</SelectItem>
+                  <SelectItem value="cloud_online">{t.settings.presets.cloud_online.label}</SelectItem>
                 </SelectContent>
               </Select>
               <p className="text-[10px] text-slate-500">
-                {processingEngine === 'local'
-                  ? 'Prefer local translation and local-first processing where available.'
-                  : 'Prefer cloud AI providers. The app will check whether API keys are configured.'}
+                {processingPreset === 'local_offline'
+                  ? t.settings.presets.local_offline.desc
+                  : processingPreset === 'cloud_online'
+                    ? t.settings.presets.cloud_online.desc
+                    : t.settings.presets.hybrid.desc}
               </p>
-            </div>
-            <div className="space-y-2">
-              <Label className="text-[10px] uppercase text-slate-500">Connectivity Mode</Label>
-              <Select value={processingMode} onValueChange={(value: 'offline' | 'hybrid' | 'online') => setProcessingMode(value)} disabled={!isEditing}>
-                <SelectTrigger className="bg-black/20 border-white/10">
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="offline">Offline</SelectItem>
-                  <SelectItem value="hybrid">Hybrid</SelectItem>
-                  <SelectItem value="online">Online</SelectItem>
-                </SelectContent>
-              </Select>
-              <p className="text-[10px] text-slate-500">
-                {processingMode === 'offline'
-                  ? 'Uses local ASR and local translation only. Remote URL import, Edge TTS, and cloud LLM rewrite are disabled.'
-                  : processingMode === 'hybrid'
-                    ? 'Uses local ASR and translation by default, while still allowing URL import, Edge TTS, and optional cloud LLM rewrite.'
-                    : 'Uses online services when available for translation and LLM rewrite, with remote import enabled.'}
-              </p>
+              <p className="text-[10px] text-slate-600">{t.settings.presetHint}</p>
               {config?.capabilities && (
                 <div className="grid grid-cols-3 gap-2 text-[10px] text-slate-500">
-                  <div>LLM: {config.capabilities.cloud_llm ? 'On' : 'Off'}</div>
-                  <div>TTS: {config.capabilities.network_tts ? 'On' : 'Off'}</div>
-                  <div>URL Import: {config.capabilities.url_import ? 'On' : 'Off'}</div>
+                  <div>{t.settings.capLlm}: {config.capabilities.cloud_llm ? t.common.on : t.common.off}</div>
+                  <div>{t.settings.capTts}: {config.capabilities.network_tts ? t.common.on : t.common.off}</div>
+                  <div>{t.settings.capUrl}: {config.capabilities.url_import ? t.common.on : t.common.off}</div>
                 </div>
               )}
             </div>

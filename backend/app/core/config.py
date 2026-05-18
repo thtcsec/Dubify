@@ -18,7 +18,15 @@ class Settings(BaseSettings):
     INPUT_DIR: Path = STORAGE_DIR / "input"
     TEMP_DIR: Path = STORAGE_DIR / "temp"
     OUTPUT_DIR: Path = STORAGE_DIR / "output"
+    ARTIFACTS_DIR: Path = STORAGE_DIR / "artifacts"
+    BGM_DIR: Path = STORAGE_DIR / "bgm"
     PIPER_MODELS_DIR: Path = MODELS_DIR / "piper"
+
+    # Storage / security
+    CLEANUP_TEMP: bool = True
+    API_ADMIN_KEY: str = ""
+    ENABLE_STUDIO_BGM: bool = True
+    STUDIO_BGM_VOLUME: float = 0.15
     
     # AI Config
     PROCESSING_ENGINE: str = "local"
@@ -67,7 +75,12 @@ class Settings(BaseSettings):
         return mode if mode in {"offline", "hybrid", "online"} else "hybrid"
 
     def default_translation_service(self) -> str:
-        return "google" if self.normalized_processing_engine() == "cloud" else "nllb"
+        """Offline uses local NLLB; hybrid/online use Google Translate when network is allowed."""
+        if self.normalized_processing_mode() == "offline":
+            return "nllb"
+        if self.normalized_processing_engine() == "cloud":
+            return "google"
+        return "google" if self.allow_network_downloads() else "nllb"
 
     def allow_cloud_llm(self) -> bool:
         return (
@@ -127,7 +140,16 @@ class Settings(BaseSettings):
     def create_directories(self):
         """Ensure all required directories exist."""
         try:
-            for path in [self.STORAGE_DIR, self.MODELS_DIR, self.INPUT_DIR, self.TEMP_DIR, self.OUTPUT_DIR, self.PIPER_MODELS_DIR]:
+            for path in [
+                self.STORAGE_DIR,
+                self.MODELS_DIR,
+                self.INPUT_DIR,
+                self.TEMP_DIR,
+                self.OUTPUT_DIR,
+                self.ARTIFACTS_DIR,
+                self.BGM_DIR,
+                self.PIPER_MODELS_DIR,
+            ]:
                 path.mkdir(parents=True, exist_ok=True)
         except Exception as e:
             print(f"Warning: Could not create directories: {e}")

@@ -14,7 +14,8 @@ import { ProjectsView } from './views/ProjectsView';
 import { HistoryView, SettingsView } from './views/ActivityViews';
 import { HelpView } from './views/HelpView';
 
-import api from './lib/api';
+import api, { uploadApi } from './lib/api';
+import { useI18n } from './i18n/I18nProvider';
 
 interface VideoInfo {
   title: string;
@@ -25,6 +26,7 @@ interface VideoInfo {
 }
 
 export default function App() {
+  const { t } = useI18n();
   // Navigation State
   const [currentView, setCurrentView] = useState('dashboard');
   const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(false);
@@ -51,9 +53,9 @@ export default function App() {
       setVideoInfo(response.data);
     } catch (err) {
       if (isTimeoutError(err)) {
-        setFetchError('Request timed out. The server took too long to respond.');
+        setFetchError(t.dashboard.fetchTimeout);
       } else {
-        setFetchError(extractApiErrorMessage(err, 'Failed to fetch info. Ensure the URL is public and valid.'));
+        setFetchError(extractApiErrorMessage(err, t.dashboard.fetchInvalid));
       }
     } finally {
       setIsLoading(false);
@@ -69,7 +71,7 @@ export default function App() {
       let response;
       if (file) {
         formData.append('file', file);
-        response = await api.post('/dub', formData);
+        response = await uploadApi.post('/dub', formData);
       } else {
         formData.append('url', videoUrl);
         response = await api.post('/dub-url', formData);
@@ -77,9 +79,9 @@ export default function App() {
       setJobId(response.data.job_id);
     } catch (err) {
       if (isTimeoutError(err)) {
-         setFetchError('Project creation timed out, but the worker might still be processing it.');
+         setFetchError(t.dashboard.dubTimeoutHint);
       } else {
-         setFetchError(extractApiErrorMessage(err, 'Failed to start dubbing project.'));
+         setFetchError(extractApiErrorMessage(err, t.dashboard.dubFailed));
       }
     } finally {
       setIsLoading(false);

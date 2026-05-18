@@ -4,6 +4,7 @@ import shutil
 import logging
 import tempfile
 import re
+import threading
 from pathlib import Path
 from typing import Optional, Tuple, Callable
 import numpy as np
@@ -145,6 +146,17 @@ class VideoService:
             return False
 
     @staticmethod
+    def _drain_stderr(stderr) -> None:
+        """Prevent FFmpeg from blocking when the stderr pipe buffer fills."""
+        if stderr is None:
+            return
+        try:
+            for _ in stderr:
+                pass
+        except Exception:
+            pass
+
+    @staticmethod
     def _run_ffmpeg_with_progress(command: list[str], duration: float, progress_callback: Optional[Callable[[float], None]] = None) -> bool:
         if progress_callback is None or duration <= 0:
             try:
@@ -163,7 +175,14 @@ class VideoService:
             encoding="utf-8",
             errors="ignore",
         )
+        stderr_thread = threading.Thread(
+            target=VideoService._drain_stderr,
+            args=(process.stderr,),
+            daemon=True,
+        )
+        stderr_thread.start()
         last_ratio = 0.0
+        last_log_pct = -1
         try:
             assert process.stdout is not None
             for line in process.stdout:
@@ -178,9 +197,13 @@ class VideoService:
                 if ratio > last_ratio:
                     last_ratio = ratio
                     progress_callback(ratio)
-            stderr_output = process.stderr.read() if process.stderr else ""
+                    pct = int(ratio * 100)
+                    if pct >= last_log_pct + 10:
+                        last_log_pct = pct
+                        logger.info("FFmpeg encode progress: %s%%", pct)
+            stderr_thread.join(timeout=2)
             if process.wait() != 0:
-                logger.error(f"FFmpeg progress run error: {stderr_output}")
+                logger.error("FFmpeg exited with code %s", process.returncode)
                 return False
             progress_callback(1.0)
             return True
@@ -288,9 +311,17 @@ class VideoService:
                     "-c:v", "copy", "-map", "0:v:0", "-map", "1:a:0",
                     "-shortest", str(output_path)
                 ]
+            video_duration = VideoService.get_duration(video_path)
+            audio_duration = VideoService.get_duration(audio_path)
+            duration = max(video_duration, audio_duration, 1.0)
+            logger.info(
+                "Merge encode started (video %.1fs, audio %.1fs) — may take several minutes with burned subtitles",
+                video_duration,
+                audio_duration,
+            )
             return VideoService._run_ffmpeg_with_progress(
                 command,
-                duration=VideoService.get_duration(audio_path),
+                duration=duration,
                 progress_callback=progress_callback,
             )
         except Exception as e:

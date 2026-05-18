@@ -53,7 +53,18 @@ class TranslateService:
 
         try:
             if self.service_type == "google":
-                return GoogleTranslator(source=source_lang, target=self.target_lang).translate(text)
+                translated = GoogleTranslator(source=source_lang, target=self.target_lang).translate(text)
+                if (
+                    translated
+                    and source_lang == "auto"
+                    and translated.strip() == text.strip()
+                    and self.target_lang.split("-")[0].lower() not in text.lower()[:3]
+                ):
+                    logger.warning(
+                        "Google Translate returned unchanged text for target=%s (segment may stay in source language)",
+                        self.target_lang,
+                    )
+                return translated or text
             
             elif self.service_type == "ollama":
                 return self._translate_ollama(text)
@@ -106,12 +117,14 @@ class TranslateService:
         
         def translate_item(item):
             idx, seg = item
+            original = (seg.get("text") or "").strip()
             try:
-                translated = self.translate_text(seg['text'])
+                translated = self.translate_text(original)
             except Exception as e:
                 logger.warning("Translation failed for segment %d, using original text: %s", idx, e)
-                translated = seg['text']
-            return idx, {**seg, 'translated_text': translated}
+                translated = original
+            translated = (translated or original).strip()
+            return idx, {**seg, 'translated_text': translated, '_untranslated': translated == original}
 
         results = [None] * len(segments)
         completed = 0
@@ -129,4 +142,22 @@ class TranslateService:
                 if progress_callback:
                     progress_callback(completed, len(segments))
                 
-        return [r for r in results if r is not None]
+        final = [r for r in results if r is not None]
+        unchanged = sum(1 for r in final if r.pop("_untranslated", False))
+        if final and unchanged == len(final) and self.target_lang.split("-")[0].lower() != "vi":
+            logger.error(
+                "All %d segments unchanged after translation to '%s' via %s — "
+                "output will stay in source language. Check network or switch preset to Hybrid.",
+                len(final),
+                self.target_lang,
+                self.service_type,
+            )
+        elif unchanged > len(final) * 0.5:
+            logger.warning(
+                "%d/%d segments unchanged after translation to '%s' via %s",
+                unchanged,
+                len(final),
+                self.target_lang,
+                self.service_type,
+            )
+        return final

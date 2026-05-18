@@ -22,6 +22,7 @@ def chunks_to_srt(chunks: List[Dict]) -> str:
         start_ts = _to_srt_timestamp(chunk.get('start', 0))
         end_ts = _to_srt_timestamp(chunk.get('end', 0))
         lines.append(f"{start_ts} --> {end_ts}")
-        lines.append(chunk.get("text", "").strip())
+        text = chunk.get("translated_text", chunk.get("text", ""))
+        lines.append(text.strip())
         lines.append("")
     return "\n".join(lines)

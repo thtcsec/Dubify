@@ -1,10 +1,14 @@
-import { Upload, Link as LinkIcon, Info, Trash2 } from 'lucide-react';
+import { useState } from 'react';
+import { Upload, Info, Trash2, AlertCircle } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
-import { Label } from '@/components/ui/label';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { motion, AnimatePresence } from 'framer-motion';
+import { useI18n } from '@/i18n/I18nProvider';
+
+const URL_TABS = ['youtube', 'douyin', 'bilibili', 'kuaishou', 'rednote'] as const;
+type UrlTab = (typeof URL_TABS)[number];
 
 interface VideoSourceSectionProps {
   file: File | null;
@@ -28,102 +32,130 @@ export function VideoSourceSection({
   setVideoUrl,
   videoInfo,
   isLoading,
-  onFetchInfo
+  onFetchInfo,
 }: VideoSourceSectionProps) {
+  const { t } = useI18n();
+  const [activeTab, setActiveTab] = useState('upload');
+
+  const handleTabChange = (value: string) => {
+    setActiveTab(value);
+    if (value === 'upload') setVideoUrl('');
+    else setFile(null);
+  };
+
+  const tabLabel: Record<string, string> = {
+    upload: t.videoSource.upload,
+    youtube: t.videoSource.youtube,
+    douyin: t.videoSource.douyin,
+    bilibili: t.videoSource.bilibili,
+    kuaishou: t.videoSource.kuaishou,
+    rednote: t.videoSource.rednote,
+  };
+
+  const placeholderFor = (tab: string) =>
+    URL_TABS.includes(tab as UrlTab)
+      ? t.videoSource.placeholders[tab as UrlTab]
+      : t.videoSource.placeholders.default;
+
   return (
-    <Card className="bg-white/5 border-white/10 text-white overflow-hidden shadow-2xl">
-      <Tabs defaultValue="upload" className="w-full">
-        <TabsList className="w-full grid grid-cols-2 bg-transparent border-b border-white/5 rounded-none h-14">
-          <TabsTrigger value="upload" className="data-[state=active]:bg-white/5 data-[state=active]:text-primary rounded-none border-b-2 border-transparent data-[state=active]:border-primary transition-all">
-            <Upload className="w-4 h-4 mr-2" /> Local Upload
-          </TabsTrigger>
-          <TabsTrigger value="url" className="data-[state=active]:bg-white/5 data-[state=active]:text-primary rounded-none border-b-2 border-transparent data-[state=active]:border-primary transition-all">
-            <LinkIcon className="w-4 h-4 mr-2" /> Import from URL
-          </TabsTrigger>
+    <Card className="bg-[#111111] border-white/10 text-white overflow-hidden shadow-2xl">
+      <motion.div className="flex justify-between items-center p-4 border-b border-white/5">
+        <span className="font-semibold text-sm">{t.dashboard.stepSource}</span>
+      </motion.div>
+
+      <Tabs value={activeTab} onValueChange={handleTabChange} className="w-full">
+        <TabsList className="w-full flex justify-start bg-transparent border-b border-white/5 rounded-none h-12 px-2 overflow-x-auto no-scrollbar">
+          {['upload', ...URL_TABS].map((tab) => (
+            <TabsTrigger
+              key={tab}
+              value={tab}
+              className="data-[state=active]:bg-transparent data-[state=active]:text-[#22c55e] text-slate-400 rounded-none border-b-2 border-transparent data-[state=active]:border-[#22c55e] transition-all whitespace-nowrap px-4"
+            >
+              {tabLabel[tab] ?? tab}
+            </TabsTrigger>
+          ))}
         </TabsList>
-        
-        <TabsContent value="upload" className="p-6">
-           <div className="space-y-4">
-              <Label className="text-slate-400 text-xs font-bold uppercase tracking-widest">Select Video File</Label>
-              <div className="relative group">
-                <div className="absolute -inset-0.5 bg-gradient-to-r from-blue-500/20 to-purple-500/20 rounded-2xl blur opacity-0 group-hover:opacity-100 transition duration-500"></div>
-                <div 
-                  className={`relative border-2 border-dashed rounded-2xl p-16 transition-all duration-300 cursor-pointer flex flex-col items-center justify-center gap-4 bg-slate-900/80 backdrop-blur-xl ${
-                    file ? 'border-blue-500/50 bg-blue-500/10' : 'border-white/10 hover:border-blue-500/50 hover:bg-white/5'
-                  }`}
-                  onClick={() => document.getElementById('video-upload')?.click()}
-                >
-                  <div className={`p-4 rounded-2xl transition-transform duration-300 group-hover:scale-110 ${file ? 'bg-blue-500/20 text-blue-400' : 'bg-white/5 text-slate-400 group-hover:bg-blue-500/20 group-hover:text-blue-400'}`}>
-                    <Upload className="w-8 h-8" />
-                  </div>
-                  <div className="text-center">
-                    <p className="font-bold text-lg text-slate-200">{file ? file.name : "Drag & drop video here"}</p>
-                    <p className="text-sm text-slate-500 mt-2">Supports MP4, MOV, AVI (Max 500MB)</p>
-                  </div>
-                  <input type="file" id="video-upload" className="hidden" accept="video/*" onChange={(e) => setFile(e.target.files?.[0] || null)} />
-                </div>
-              </div>
-              {file && (
-                 <div className="flex justify-center mt-4">
-                   <Button variant="ghost" className="text-red-400 hover:text-red-300 hover:bg-red-400/10 transition-colors px-4 py-2 rounded-lg" onClick={(e) => { e.stopPropagation(); setFile(null); }}>
-                      <Trash2 className="w-4 h-4 mr-2" /> Remove file
-                   </Button>
-                 </div>
-              )}
-           </div>
-        </TabsContent>
 
-        <TabsContent value="url" className="p-6 space-y-6">
-          <div className="space-y-4">
-            <Label className="text-slate-400 text-xs font-bold uppercase tracking-widest">Enter Video URL</Label>
-            <div className="flex gap-3 relative group">
-              <div className="absolute -inset-0.5 bg-gradient-to-r from-blue-500/20 to-purple-500/20 rounded-xl blur opacity-0 group-focus-within:opacity-100 transition duration-500"></div>
-              <Input 
-                placeholder="https://youtube.com/... | bilibili.com/... | vimeo.com/..." 
-                className="relative bg-slate-900/80 backdrop-blur-xl border-white/10 focus:border-blue-500/50 h-14 flex-1 rounded-xl text-base px-4 shadow-inner"
-                value={videoUrl}
-                onChange={(e) => setVideoUrl(e.target.value)}
-              />
-              <Button 
-                className="relative h-14 px-8 rounded-xl bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-500 hover:to-indigo-500 font-bold shadow-[0_0_15px_rgba(59,130,246,0.3)] hover:shadow-[0_0_20px_rgba(59,130,246,0.5)] transition-all"
-                onClick={onFetchInfo} 
-                disabled={!videoUrl || isLoading}
-              >
-                {isLoading ? (
-                  <div className="w-5 h-5 border-2 border-white/30 border-t-white rounded-full animate-spin"></div>
-                ) : (
-                  "Fetch Info"
-                )}
-              </Button>
-            </div>
-          </div>
+        <div className="p-6">
+          <motion.div className="bg-[#1a1a1a] border border-amber-500/20 rounded-lg p-3 flex items-start gap-3 mb-6">
+            <AlertCircle className="w-5 h-5 text-amber-500 shrink-0 mt-0.5" />
+            <p className="text-sm text-slate-300">{t.videoSource.noteAudio}</p>
+          </motion.div>
 
-          <AnimatePresence>
-            {videoInfo && !isLoading && (
-              <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} className="border border-white/10 rounded-xl p-4 bg-slate-900/80 backdrop-blur-xl shadow-2xl flex gap-5">
-                 <div className="w-40 aspect-video bg-black rounded-lg overflow-hidden shrink-0 border border-white/5 relative group cursor-pointer shadow-lg">
-                   {videoInfo.thumbnail ? (
-                     <img src={videoInfo.thumbnail} className="w-full h-full object-cover transition-transform duration-500 group-hover:scale-110" alt="thumbnail" />
-                   ) : (
-                     <div className="w-full h-full flex items-center justify-center text-slate-600"><Info /></div>
-                   )}
-                   <div className="absolute inset-0 ring-1 ring-inset ring-black/10"></div>
-                 </div>
-                 <div className="flex-1 min-w-0 py-1 flex flex-col justify-center">
-                    <h4 className="font-bold text-lg text-white truncate group-hover:text-blue-400 transition-colors">{videoInfo.title}</h4>
-                    <div className="flex items-center gap-3 mt-3">
-                      <span className="text-xs font-semibold bg-blue-500/10 text-blue-400 px-3 py-1 rounded-full border border-blue-500/20">
-                        {videoInfo.source}
-                      </span>
-                      <span className="text-xs font-mono text-slate-400">
-                        {Math.floor(videoInfo.duration / 60)}:{String(videoInfo.duration % 60).padStart(2, '0')}
-                      </span>
-                    </div>
-                 </div>
+          <TabsContent value="upload" className="m-0">
+            <div
+              className={`border border-dashed rounded-xl p-10 cursor-pointer flex flex-col items-center justify-center gap-4 bg-[#141414] ${
+                file ? 'border-[#22c55e]/50 bg-[#22c55e]/5' : 'border-white/10 hover:border-[#22c55e]/50'
+              }`}
+              onClick={() => document.getElementById('video-upload')?.click()}
+            >
+              <Upload className="w-8 h-8" />
+              <motion.div className="text-center">
+                <p className="font-semibold text-sm">{file ? file.name : t.videoSource.dragDrop}</p>
+                <p className="text-xs text-slate-500 mt-2">{t.videoSource.supports}</p>
               </motion.div>
+              <input
+                type="file"
+                id="video-upload"
+                className="hidden"
+                accept="video/*"
+                onChange={(e) => setFile(e.target.files?.[0] || null)}
+              />
+            </div>
+            {file && (
+              <div className="flex justify-center mt-4">
+                <Button variant="ghost" className="text-red-400 h-9 text-xs" onClick={() => setFile(null)}>
+                  <Trash2 className="w-4 h-4 mr-2" /> {t.videoSource.removeFile}
+                </Button>
+              </div>
             )}
-          </AnimatePresence>
-        </TabsContent>
+          </TabsContent>
+
+          {URL_TABS.map((tabValue) => (
+            <TabsContent key={tabValue} value={tabValue} className="m-0 space-y-4">
+              <div className="flex gap-3">
+                <Input
+                  placeholder={placeholderFor(tabValue)}
+                  className="bg-[#141414] border-white/10 h-12 flex-1"
+                  value={videoUrl}
+                  onChange={(e) => setVideoUrl(e.target.value)}
+                />
+                <Button className="h-12 px-6 bg-[#22c55e]" onClick={onFetchInfo} disabled={!videoUrl || isLoading}>
+                  {isLoading ? '...' : t.videoSource.fetchInfo}
+                </Button>
+              </div>
+              <AnimatePresence>
+                {videoInfo && !isLoading && (
+                  <motion.div
+                    initial={{ opacity: 0, y: 10 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    className="border border-white/10 rounded-xl p-4 bg-[#141414] flex gap-4"
+                  >
+                    <div className="w-32 aspect-video bg-black rounded-lg overflow-hidden shrink-0">
+                      {videoInfo.thumbnail ? (
+                        <img src={videoInfo.thumbnail} className="w-full h-full object-cover" alt="" />
+                      ) : (
+                        <div className="w-full h-full flex items-center justify-center">
+                          <Info className="w-6 h-6" />
+                        </div>
+                      )}
+                    </div>
+                    <div className="flex-1 min-w-0 py-1">
+                      <h4 className="font-semibold text-sm truncate">{videoInfo.title}</h4>
+                      <div className="flex items-center gap-3 mt-2">
+                        <span className="text-[10px] uppercase text-[#22c55e]">{videoInfo.source}</span>
+                        <span className="text-xs text-slate-400">
+                          {Math.floor(videoInfo.duration / 60)}:
+                          {String(videoInfo.duration % 60).padStart(2, '0')}
+                        </span>
+                      </div>
+                    </div>
+                  </motion.div>
+                )}
+              </AnimatePresence>
+            </TabsContent>
+          ))}
+        </div>
       </Tabs>
     </Card>
   );

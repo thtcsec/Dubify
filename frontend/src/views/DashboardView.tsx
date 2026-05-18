@@ -3,6 +3,7 @@ import { Button } from '@/components/ui/button';
 import { VideoSourceSection } from '@/components/dashboard/VideoSourceSection';
 import { ProjectSettings } from '@/components/dashboard/ProjectSettings';
 import { DubbingProgress } from '@/components/DubbingProgress';
+import { useI18n } from '@/i18n/I18nProvider';
 
 interface DashboardViewProps {
   targetLang: string;
@@ -41,15 +42,16 @@ export function DashboardView({
   handleStartDubbing,
   resetProject
 }: DashboardViewProps) {
+  const { t } = useI18n();
   return (
     <>
       {!jobId && (
         <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} className="mb-8">
            <h1 className="text-3xl font-bold mb-2 flex items-center gap-3">
-             <span className="bg-gradient-to-br from-blue-500 to-indigo-500 text-transparent bg-clip-text">Create New Dubbing Project</span>
-             <span className="bg-blue-500/10 text-blue-400 text-xs px-2 py-1 rounded border border-blue-500/20 font-mono tracking-widest uppercase">Start</span>
+             <span className="bg-gradient-to-br from-blue-500 to-indigo-500 text-transparent bg-clip-text">{t.dashboard.title}</span>
+             <span className="bg-blue-500/10 text-blue-400 text-xs px-2 py-1 rounded border border-blue-500/20 font-mono tracking-widest uppercase">{t.dashboard.badge}</span>
            </h1>
-           <p className="text-slate-400">Select a source to begin the AI localization process.</p>
+           <p className="text-slate-400">{t.dashboard.subtitle}</p>
         </motion.div>
       )}
 
@@ -65,12 +67,12 @@ export function DashboardView({
                          <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"></path></svg>
                       </div>
                       <div>
-                         <h4 className="text-red-400 font-semibold text-sm">Connection Error</h4>
+                         <h4 className="text-red-400 font-semibold text-sm">{t.dashboard.connectionError}</h4>
                          <p className="text-red-400/80 text-xs">{fetchError}</p>
                       </div>
                    </div>
                    <Button variant="outline" size="sm" onClick={videoUrl ? handleFetchInfo : handleStartDubbing} className="border-red-500/20 text-red-400 hover:bg-red-500/10">
-                      Retry
+                      {t.dashboard.retry}
                    </Button>
                 </div>
               )}

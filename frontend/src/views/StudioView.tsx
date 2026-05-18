@@ -4,9 +4,11 @@ import { Button } from '../components/ui/button';
 import { Label } from '../components/ui/label';
 import { Textarea } from '../components/ui/textarea';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '../components/ui/select';
+import { Switch } from '../components/ui/switch';
 import { DubbingProgress } from '../components/DubbingProgress';
 import { isTimeoutError, extractApiErrorMessage } from '../lib/errors';
 import api from '../lib/api';
+import { useI18n } from '@/i18n/I18nProvider';
 
 interface Voice {
   id: string;
@@ -29,6 +31,7 @@ interface StudioViewProps {
 }
 
 export function StudioView({ targetLang, setTargetLang }: StudioViewProps) {
+  const { t } = useI18n();
   const [jobId, setJobId] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -39,7 +42,8 @@ export function StudioView({ targetLang, setTargetLang }: StudioViewProps) {
   const [imageUrl, setImageUrl] = useState<string | null>(null);
   const [isDragOver, setIsDragOver] = useState(false);
   const [aspectRatio, setAspectRatio] = useState('16:9');
-  
+  const [useRawScript, setUseRawScript] = useState(true);
+
   // Voice
   const [voices, setVoices] = useState<Voice[]>([]);
   const [selectedVoice, setSelectedVoice] = useState('vi-VN-HoaiMyNeural');
@@ -161,6 +165,7 @@ export function StudioView({ targetLang, setTargetLang }: StudioViewProps) {
     formData.append('target_lang', targetLang);
     formData.append('voice_id', selectedVoice);
     formData.append('aspect_ratio', aspectRatio);
+    formData.append('use_raw_script', useRawScript ? 'true' : 'false');
     if (manualDuration !== null && manualDuration > 0) {
       formData.append('duration_seconds', String(manualDuration));
     }
@@ -204,8 +209,8 @@ export function StudioView({ targetLang, setTargetLang }: StudioViewProps) {
     <>
       {!jobId && (
         <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }}>
-           <h1 className="text-3xl font-bold mb-2">Script to Video</h1>
-           <p className="text-slate-400 mb-8">Turn a script and background into a narrated social video, with drag-drop image input, canvas ratio control, and auto caption overlays.</p>
+           <h1 className="text-3xl font-bold mb-2">{t.studio.title}</h1>
+           <p className="text-slate-400 mb-8">{t.studio.subtitle}</p>
         </motion.div>
       )}
 
@@ -236,16 +241,23 @@ export function StudioView({ targetLang, setTargetLang }: StudioViewProps) {
                           <span className="bg-indigo-500/20 text-indigo-400 p-1.5 rounded-lg">
                             <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" /></svg>
                           </span>
-                          Script Content
+                          {t.studio.scriptLabel}
                         </Label>
                         {wordCount > 0 && (
                           <span className="text-xs font-mono bg-indigo-500/10 text-indigo-300 px-3 py-1 rounded-full border border-indigo-500/20">
-                            {wordCount} words · ~{estimatedDuration}s
+                            {wordCount} {t.common.words} · ~{estimatedDuration}{t.common.seconds}
                           </span>
                         )}
                       </div>
+                      <div className="flex items-center justify-between rounded-xl border border-white/10 bg-black/30 px-4 py-3 mb-4">
+                        <div>
+                          <p className="text-sm font-medium text-slate-200">{t.studio.useRawScript}</p>
+                          <p className="text-xs text-slate-500 mt-0.5">{t.studio.useRawScriptHint}</p>
+                        </div>
+                        <Switch checked={useRawScript} onCheckedChange={setUseRawScript} />
+                      </div>
                       <Textarea 
-                        placeholder="Write or paste your script here. Our AI will automatically synthesize this into professional narration..."
+                        placeholder={t.studio.scriptPlaceholder}
                         className="min-h-[180px] bg-black/40 border-white/5 focus:border-indigo-500/50 rounded-xl transition-all resize-none text-base placeholder:text-slate-600 focus:ring-1 focus:ring-indigo-500/50"
                         value={newsText}
                         onChange={(e) => setNewsText(e.target.value)}

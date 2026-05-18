@@ -1,7 +1,7 @@
-from fastapi import APIRouter, UploadFile, File, BackgroundTasks, HTTPException, Form, Query
+from fastapi import APIRouter, UploadFile, File, BackgroundTasks, HTTPException, Form, Query, Depends
 from fastapi.responses import FileResponse, StreamingResponse
 from typing import Optional
-from pydantic import BaseModel, Field
+from pydantic import BaseModel
 from pathlib import Path
 import shutil
 import os
@@ -17,21 +17,21 @@ MAX_UPLOAD_SIZE = 2 * 1024 * 1024 * 1024  # 2 GB
 ALLOWED_ASPECT_RATIOS = {"16:9", "9:16", "4:3", "3:4", "1:1"}
 ALLOWED_VIDEO_ENGINES = {"local", "veo3", "kling", "minimax", "seedance"}
 
+from app.core.auth import require_admin_key
 from app.core.config import settings
 from app.core.jobs import job_manager, JobStatus, JobType
 from app.core.logging import mask_api_key
-from app.services.pipeline import DubbingPipeline
-from app.services.url_service import URLService, URLServiceError
-from app.services.video_service import VideoService
-from app.services.asr_service import ASRService
-from app.services.translate_service import TranslateService
-from app.services.tts_service import TTSService
 from app.core.worker import worker
+from app.services.url_service import URLService, URLServiceError
+from app.services.tts_service import TTSService
+from app.services.editor_service import EditorService
+from app.utils.artifacts import remove_job_artifacts, resolve_artifact_paths
+from app.utils.uploads import save_upload_limited
+from app.utils.url_safety import validate_public_http_url
 
 logger = logging.getLogger(__name__)
 router = APIRouter()
 url_service = URLService()
-video_service = VideoService()
 
 
 # ─── Dubbing Endpoints ──────────────────────────────────────────────────────
@@ -43,11 +43,11 @@ async def create_dub_job(
     target_lang: str = "vi"
 ):
     """Upload a video file and start dubbing."""
-    file_id = job_manager.create_job(file.filename, job_type=JobType.DUBBING)
-    input_path = settings.INPUT_DIR / f"{file_id}_{file.filename}"
+    file_id = job_manager.create_job(file.filename or "upload", job_type=JobType.DUBBING)
+    safe_name = Path(file.filename or "upload").name
+    input_path = settings.INPUT_DIR / f"{file_id}_{safe_name}"
 
-    with input_path.open("wb") as buffer:
-        shutil.copyfileobj(file.file, buffer)
+    await save_upload_limited(file, input_path, MAX_UPLOAD_SIZE)
 
     worker.add_job(file_id, {
         "source_path": input_path,
@@ -89,8 +89,9 @@ async def create_studio_video(
     voice_id: str = Form("vi-VN-HoaiMyNeural"),
     duration_seconds: int = Form(0),
     aspect_ratio: str = Form("16:9"),
+    use_raw_script: bool = Form(True),
 ):
-    """Create a studio video from image + text."""
+    """Create a studio video from image + script (verbatim or LLM rewrite)."""
     if image is None and not image_url:
         raise HTTPException(status_code=400, detail="Please upload an image or provide an image URL.")
 
@@ -121,6 +122,7 @@ async def create_studio_video(
         "voice_id": voice_id,
         "duration_seconds": max(0, int(duration_seconds)),
         "aspect_ratio": aspect_ratio,
+        "use_raw_script": use_raw_script,
     })
 
     return {"job_id": job_id}
@@ -179,15 +181,12 @@ async def create_shorts_video(
 
 
 def _download_image_to_input(job_id: str, image_url: str) -> Path:
+    try:
+        validate_public_http_url(image_url)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
     parsed = urlparse(image_url)
-    if parsed.scheme not in {"http", "https"}:
-        raise HTTPException(status_code=400, detail="Only http/https image URLs are supported.")
-
-    # Block private/internal IPs (basic SSRF protection)
-    hostname = parsed.hostname or ""
-    if hostname in ("localhost", "127.0.0.1", "0.0.0.0", "::1") or hostname.startswith("10.") or hostname.startswith("192.168.") or hostname.startswith("172."):
-        raise HTTPException(status_code=400, detail="Internal/private URLs are not allowed.")
-
     try:
         response = requests.get(image_url, timeout=30, stream=True, headers={"User-Agent": "Dubify/1.0"})
         response.raise_for_status()
@@ -293,27 +292,81 @@ async def get_job_artifacts(job_id: str):
     if not job:
         raise HTTPException(status_code=404, detail="Job not found")
 
-    artifacts: dict[str, Optional[str]] = {
-        "subtitle_path": None,
-        "transcript_path": None,
-        "session_dir": None,
+    resolved = resolve_artifact_paths(job_id)
+    return {
+        "subtitle_path": str(resolved["subtitle_path"]) if resolved["subtitle_path"] else None,
+        "transcript_path": str(resolved["transcript_path"]) if resolved["transcript_path"] else None,
+        "audio_path": str(resolved["audio_path"]) if resolved.get("audio_path") else None,
+        "source_video_path": str(resolved["source_video_path"]) if resolved.get("source_video_path") else None,
+        "session_dir": str(resolved["session_dir"]) if resolved["session_dir"] else None,
     }
 
-    session_dir = settings.TEMP_DIR / job_id
-    if session_dir.exists():
-        artifacts["session_dir"] = str(session_dir)
-        transcript_path = session_dir / "transcript.json"
-        subtitle_path = session_dir / "translated.srt"
-        if transcript_path.exists():
-            artifacts["transcript_path"] = str(transcript_path)
-        if subtitle_path.exists():
-            artifacts["subtitle_path"] = str(subtitle_path)
-    else:
-        studio_subtitle = settings.TEMP_DIR / f"{job_id}_tts.vtt"
-        if studio_subtitle.exists():
-            artifacts["subtitle_path"] = str(studio_subtitle)
 
-    return artifacts
+@router.post("/jobs/{job_id}/burn-subtitles")
+async def burn_job_subtitles(job_id: str, srt: str = Form(...)):
+    """Re-merge source video + dubbed audio with edited SRT (Studio Editor export)."""
+    job = job_manager.get_job(job_id)
+    if not job:
+        raise HTTPException(status_code=404, detail="Job not found")
+    if job.get("status") != JobStatus.COMPLETED:
+        raise HTTPException(status_code=400, detail="Job must be completed before re-rendering.")
+
+    try:
+        editor = EditorService()
+        output_path = editor.burn_subtitles(job_id, srt)
+        job_manager.update_job(job_id, JobStatus.COMPLETED, output_path=str(output_path))
+        return {
+            "job_id": job_id,
+            "output_path": str(output_path),
+            "filename": output_path.name,
+        }
+    except FileNotFoundError as e:
+        raise HTTPException(status_code=400, detail=str(e)) from e
+    except Exception as e:
+        logger.exception("Burn subtitles failed for %s", job_id)
+        raise HTTPException(status_code=500, detail=str(e)) from e
+
+
+@router.get("/dubbing/capabilities")
+async def dubbing_capabilities():
+    """Explain what each processing preset enables (for UI / debugging)."""
+    engine = settings.normalized_processing_engine()
+    mode = settings.normalized_processing_mode()
+    translation = settings.default_translation_service()
+    return {
+        "processing_engine": engine,
+        "processing_mode": mode,
+        "translation_service": translation,
+        "capabilities": {
+            "cloud_llm": settings.allow_cloud_llm(),
+            "network_tts": settings.allow_network_tts(),
+            "url_import": settings.allow_network_downloads(),
+        },
+        "presets": {
+            "hybrid": {
+                "translation": "google (online)",
+                "tts": "Edge-TTS (online)",
+                "asr": "local Whisper",
+                "notes": "Best default for dubbing to another language when you have internet.",
+            },
+            "local_offline": {
+                "translation": "NLLB (local)",
+                "tts": "Piper / SAPI (offline)",
+                "asr": "local Whisper",
+                "notes": "Fully offline; translation quality depends on NLLB model; no URL import.",
+            },
+            "cloud_online": {
+                "translation": "google",
+                "tts": "Edge-TTS",
+                "asr": "local Whisper",
+                "notes": "Uses cloud LLM when keys are set; needs network.",
+            },
+        },
+        "tts_voice_by_target_lang": {
+            lang: TTSService.default_voice_for_lang(lang)
+            for lang in ("vi", "en", "ja", "ko", "zh", "fr", "es", "de")
+        },
+    }
 
 
 # ─── Job Control (Cancel / Pause / Resume) ──────────────────────────────────
@@ -366,6 +419,7 @@ async def delete_job(job_id: str):
     if job["status"] in (JobStatus.PROCESSING, JobStatus.PENDING, JobStatus.PAUSED):
         raise HTTPException(status_code=400, detail="Cannot delete an active job. Cancel it first.")
     job_manager.delete_job(job_id)
+    remove_job_artifacts(job_id)
     logger.info(f"Job {job_id} deleted by user.")
     return {"status": "deleted", "job_id": job_id}
 
@@ -523,7 +577,7 @@ class SettingsUpdate(BaseModel):
     groq_api_key: Optional[str] = None
 
 
-@router.post("/settings")
+@router.post("/settings", dependencies=[Depends(require_admin_key)])
 async def update_settings(data: SettingsUpdate):
     """Update API keys. Values are persisted to .env file."""
     try:

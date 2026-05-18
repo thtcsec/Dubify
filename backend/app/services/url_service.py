@@ -37,10 +37,17 @@ class URLService:
     def _resolve_redirect_url(self, url: str) -> str:
         """Resolve short links to final URL when possible."""
         headers = dict(self.default_headers)
-        if "douyin.com" in url or "tiktok.com" in url or "b23.tv" in url:
+        if "douyin.com" in url or "tiktok.com" in url or "b23.tv" in url or "kuaishou.com" in url or "xiaohongshu.com" in url or "xhslink.com" in url:
             headers["User-Agent"] = "Mozilla/5.0 (iPhone; CPU iPhone OS 17_4_1 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.4.1 Mobile/15E148 Safari/604.1"
             headers["Accept-Language"] = "zh-CN,zh;q=0.9,en;q=0.8"
-            headers["Referer"] = "https://www.bilibili.com/" if "b23.tv" in url else "https://www.douyin.com/"
+            if "b23.tv" in url or "bilibili.com" in url:
+                headers["Referer"] = "https://www.bilibili.com/"
+            elif "kuaishou.com" in url:
+                headers["Referer"] = "https://www.kuaishou.com/"
+            elif "xiaohongshu.com" in url or "xhslink.com" in url:
+                headers["Referer"] = "https://www.xiaohongshu.com/"
+            else:
+                headers["Referer"] = "https://www.douyin.com/"
         
         try:
             # We use a custom redirect handler to catch the video ID if it gets lost
@@ -84,8 +91,27 @@ class URLService:
         url = url.split()[0]
 
         # Resolve short links often used by TikTok/Douyin sharing.
-        if "v.douyin.com" in url or "vm.tiktok.com" in url or "vt.tiktok.com" in url or "b23.tv" in url:
+        if "v.douyin.com" in url or "vm.tiktok.com" in url or "vt.tiktok.com" in url or "b23.tv" in url or "v.kuaishou.com" in url or "xhslink.com" in url:
             url = self._resolve_redirect_url(url)
+
+        # YouTube: youtu.be, shorts, live, watch URLs
+        if "youtu.be/" in url:
+            short_id = re.search(r"youtu\.be/([\w-]{11})", url)
+            if short_id:
+                return f"https://www.youtube.com/watch?v={short_id.group(1)}"
+        if "youtube.com" in url or "youtube-nocookie.com" in url:
+            yt_id = re.search(
+                r"(?:v=|/shorts/|/live/|/embed/)([\w-]{11})",
+                url,
+            )
+            if yt_id:
+                return f"https://www.youtube.com/watch?v={yt_id.group(1)}"
+            match = re.search(
+                r"(https?://(?:www\.)?youtube\.com/watch\?v=[\w-]{11})",
+                url,
+            )
+            if match:
+                return match.group(1)
 
         if "bilibili.com" in url:
             match = re.search(r"(https?://(?:www\.)?bilibili\.com/video/[A-Za-z0-9]+)", url)
@@ -103,6 +129,18 @@ class URLService:
             match = re.search(r"/video/(\d+)", url)
             if match:
                 return f"https://www.douyin.com/video/{match.group(1)}"
+
+        # Normalize Kuaishou short video URLs
+        if "kuaishou.com" in url:
+            match = re.search(r"(https?://(?:www\.)?kuaishou\.com/(?:short-video|f)/[A-Za-z0-9_-]+)", url)
+            if match:
+                return match.group(1)
+
+        # Normalize Xiaohongshu (RedNote) URLs
+        if "xiaohongshu.com" in url:
+            match = re.search(r"(https?://(?:www\.)?xiaohongshu\.com/(?:explore|discovery/item)/[A-Za-z0-9]+)", url)
+            if match:
+                return match.group(1)
 
         return url
 
@@ -191,7 +229,7 @@ class URLService:
                 yield (f"cookiefile:{cookie_path}", opts)
 
         # Last fallback: allow Android client extraction for TikTok family sites.
-        if "douyin.com" in url or "tiktok.com" in url:
+        if "douyin.com" in url or "tiktok.com" in url or "kuaishou.com" in url or "xiaohongshu.com" in url:
             mobile = dict(base)
             mobile["extractor_args"] = {"tiktok": {"app_info": ["musical_ly/35.1.3/2023501030"]}}
             yield ("tiktok-mobile-client", mobile)
@@ -226,6 +264,10 @@ class URLService:
             hints.append("Open the video once in your browser, then retry in Dubify immediately.")
             hints.append("Set YTDLP_COOKIES_FROM_BROWSERS in .env (example: chrome,edge).")
             hints.append("Or export cookies.txt and set YTDLP_COOKIE_FILE in .env.")
+        if "kuaishou.com" in url:
+            hints.append("Kuaishou videos may require cookies. Try setting YTDLP_COOKIES_FROM_BROWSERS=chrome,edge in .env.")
+        if "xiaohongshu.com" in url or "xhslink.com" in url:
+            hints.append("RedNote (Xiaohongshu) videos may require login cookies. Export cookies.txt from your browser and set YTDLP_COOKIE_FILE in .env.")
         
         if errors:
             # Filter out generic "browser not found" errors so the real error (like age restriction or geo-block) is shown

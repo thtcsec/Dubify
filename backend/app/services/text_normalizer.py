@@ -38,21 +38,26 @@ def _get_normalizer():
     _init_attempted = True
 
     try:
-        # Temporarily add to sys.path so we can import the package
-        vn_path = str(_VIETNORMALIZER_ROOT)
-        if vn_path not in sys.path:
-            sys.path.insert(0, vn_path)
-
         from vietnormalizer import VietnameseNormalizer
 
-        _normalizer_instance = VietnameseNormalizer(
-            enable_transliteration=True  # Transliterate remaining non-Vietnamese words
-        )
+        _normalizer_instance = VietnameseNormalizer(enable_transliteration=True)
         logger.info(
-            "VietnameseNormalizer loaded successfully (dict size: %d acronyms, %d words)",
+            "VietnameseNormalizer loaded from PyPI (acronyms=%d, words=%d)",
             len(_normalizer_instance.acronym_map),
             len(_normalizer_instance.non_vietnamese_map),
         )
+    except ImportError:
+        try:
+            vn_path = str(_VIETNORMALIZER_ROOT)
+            if vn_path not in sys.path:
+                sys.path.insert(0, vn_path)
+            from vietnormalizer import VietnameseNormalizer
+
+            _normalizer_instance = VietnameseNormalizer(enable_transliteration=True)
+            logger.info("VietnameseNormalizer loaded from third_party/")
+        except Exception as e:
+            logger.warning("Could not load VietnameseNormalizer: %s", e)
+            _normalizer_instance = None
     except Exception as e:
         logger.warning("Could not load VietnameseNormalizer: %s. TTS text will not be normalized.", e)
         _normalizer_instance = None

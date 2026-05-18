@@ -12,15 +12,48 @@ from app.core.config import settings
 from app.services.video_service import VideoService
 from app.services.f5_tts_service import F5TTSService
 from app.services.text_normalizer import normalize_for_tts
+from app.utils.script_split import split_spoken_lines
 
 logger = logging.getLogger(__name__)
+
+# Default Edge-TTS voices per target language (dubbing uses these when no voice_id is sent).
+DEFAULT_EDGE_VOICES: dict[str, str] = {
+    "vi": "vi-VN-HoaiMyNeural",
+    "en": "en-US-JennyNeural",
+    "ja": "ja-JP-NanamiNeural",
+    "ko": "ko-KR-SunHiNeural",
+    "zh": "zh-CN-XiaoxiaoNeural",
+    "fr": "fr-FR-DeniseNeural",
+    "es": "es-ES-ElviraNeural",
+    "de": "de-DE-KatjaNeural",
+    "pt": "pt-BR-FranciscaNeural",
+    "it": "it-IT-ElsaNeural",
+    "ru": "ru-RU-SvetlanaNeural",
+    "th": "th-TH-PremwadeeNeural",
+    "hi": "hi-IN-SwaraNeural",
+    "ar": "ar-SA-ZariyahNeural",
+    "id": "id-ID-GadisNeural",
+}
+
 
 class TTSService:
     _piper_cache: dict[str, PiperVoice] = {}
     _piper_lock = threading.Lock()
 
-    def __init__(self, voice: str = "vi-VN-HoaiMyNeural", rate: str = "+0%", pitch: str = "+0Hz", provider: str = "edge", target_lang: str = "vi"):
-        self.voice = voice
+    @staticmethod
+    def default_voice_for_lang(target_lang: str) -> str:
+        code = (target_lang or "vi").split("-")[0].lower()
+        return DEFAULT_EDGE_VOICES.get(code, "en-US-JennyNeural")
+
+    def __init__(
+        self,
+        voice: Optional[str] = None,
+        rate: str = "+0%",
+        pitch: str = "+0Hz",
+        provider: str = "edge",
+        target_lang: str = "vi",
+    ):
+        self.voice = voice or self.default_voice_for_lang(target_lang)
         self.rate = rate
         self.pitch = pitch
         self.provider = provider
@@ -33,7 +66,9 @@ class TTSService:
     @staticmethod
     def _write_basic_vtt(text: str, audio_path: Path, subtitle_path: Path):
         duration = max(VideoService.get_duration(audio_path), 0.1)
-        words = [word for word in text.split() if word.strip()]
+        chunks = split_spoken_lines(text, max_chars=90)
+        if not chunks:
+            chunks = [segment for segment in text.split() if segment.strip()]
 
         def fmt(seconds: float) -> str:
             total_ms = int(max(seconds, 0) * 1000)
@@ -43,12 +78,9 @@ class TTSService:
             millis = total_ms % 1000
             return f"{hours:02d}:{minutes:02d}:{secs:02d}.{millis:03d}"
 
-        if not words:
+        if not chunks:
             subtitle_path.write_text("WEBVTT\n\n", encoding="utf-8")
             return
-
-        chunk_size = 6
-        chunks = [" ".join(words[index:index + chunk_size]) for index in range(0, len(words), chunk_size)]
         step = duration / len(chunks)
         lines = ["WEBVTT", ""]
         for index, chunk in enumerate(chunks, start=1):
@@ -81,6 +113,27 @@ class TTSService:
     def _piper_config_path(model_path: Path) -> Path:
         return Path(f"{model_path}.json")
 
+    @staticmethod
+    def _target_lang_to_piper_locale(target_lang: str) -> Optional[str]:
+        mapping = {
+            "vi": "vi_VN",
+            "en": "en_US",
+            "ja": "ja_JP",
+            "ko": "ko_KR",
+            "zh": "zh_CN",
+            "fr": "fr_FR",
+            "es": "es_ES",
+            "de": "de_DE",
+            "pt": "pt_BR",
+            "it": "it_IT",
+            "ru": "ru_RU",
+            "th": "th_TH",
+            "hi": "hi_IN",
+            "ar": "ar_SA",
+            "id": "id_ID",
+        }
+        return mapping.get((target_lang or "").split("-")[0].lower())
+
     def _resolve_piper_model(self) -> Optional[Path]:
         if not settings.PIPER_MODELS_DIR.exists():
             return None
@@ -93,7 +146,7 @@ class TTSService:
         if not available_models:
             return None
 
-        locale = self._voice_locale(self.voice)
+        locale = self._target_lang_to_piper_locale(self.target_lang) or self._voice_locale(self.voice)
         if locale:
             exact_matches = [
                 model_path for model_path in available_models
@@ -295,8 +348,16 @@ class TTSService:
             except Exception as e:
                 logger.error(f"Edge-TTS attempt {attempt + 1} failed: {e}")
                 if attempt < retries - 1:
-                    await asyncio.sleep(1)
-        
+                    await asyncio.sleep(2 ** attempt)
+
+        # Network Edge-TTS failed — try offline Piper/SAPI before giving up.
+        try:
+            if await self._generate_local_audio(text, output_path):
+                logger.info("Edge-TTS unavailable; used local TTS fallback.")
+                return True
+        except Exception as local_err:
+            logger.warning("Local TTS fallback failed: %s", local_err)
+
         return False
 
     async def generate_audio_with_subtitles(self, text: str, target_lang: str, job_id: str) -> Tuple[Path, Path]:
@@ -333,7 +394,18 @@ class TTSService:
             return fallback_audio, fallback_srt
 
     @staticmethod
+    def _edge_safe_text(text: str, max_chars: int = 280) -> str:
+        cleaned = re.sub(r"\s+", " ", (text or "").strip())
+        if not cleaned:
+            return ""
+        if len(cleaned) <= max_chars:
+            return cleaned
+        # Edge-TTS often returns NoAudioReceived on very long single requests.
+        head = cleaned[: max_chars - 1].rsplit(" ", 1)[0]
+        return head or cleaned[:max_chars]
+
     async def _edge_tts_subprocess(
+        self,
         text: str,
         voice: str,
         audio_path: Path,
@@ -342,6 +414,10 @@ class TTSService:
         """Run edge-tts via CLI subprocess to avoid uvicorn event loop conflicts on Windows."""
         import sys
         import tempfile
+
+        text = TTSService._edge_safe_text(text)
+        if not text:
+            return False
 
         # Write text to a temp file to handle Unicode and long texts safely
         with tempfile.NamedTemporaryFile("w", suffix=".txt", delete=False, encoding="utf-8") as tf:
@@ -396,6 +472,9 @@ class TTSService:
         """
         if self._use_local_tts() or self.provider == "f5tts":
             max_concurrency = 1
+        elif settings.allow_network_tts():
+            # Edge-TTS rate-limits aggressive parallel requests (NoAudioReceived).
+            max_concurrency = min(max_concurrency, 2)
 
         logger.info(f"Generating TTS for {len(segments)} segments (concurrency={max_concurrency})")
         
@@ -460,15 +539,29 @@ class TTSService:
             last_end = 0.0
             for i, (path, seg) in enumerate(zip(audio_paths, segments)):
                 start = seg['start']
+                end = seg['end']
+                
+                # Prevent negative gaps due to overlapping segments
+                start = max(start, last_end)
                 gap = start - last_end
                 
                 # If gap is significant (> 10ms), insert a silent file
                 if gap > 0.01:
                     silence_path = temp_dir / f"gap_{i}.wav"
-                    VideoService.create_silence(gap, silence_path)
-                    f.write(f"file '{silence_path.absolute().as_posix()}'\n")
+                    if VideoService.create_silence(gap, silence_path) and silence_path.exists():
+                        f.write(f"file '{silence_path.absolute().as_posix()}'\n")
                 
-                f.write(f"file '{path.absolute().as_posix()}'\n")
-                last_end = seg['end']
+                # Verify segment file exists, if not, fill its duration with silence to maintain sync
+                if not path.exists():
+                    duration = max(0.01, end - start)
+                    logger.warning(f"Segment {i} audio missing, filling {duration}s gap with silence.")
+                    path = temp_dir / f"fallback_silence_{i}.wav"
+                    VideoService.create_silence(duration, path)
+                
+                if path.exists():
+                    f.write(f"file '{path.absolute().as_posix()}'\n")
+                
+                # Update last_end to the actual end of this segment
+                last_end = max(end, start)
                 
         logger.info(f"Concat list created at {output_list_file} with sync gaps.")

@@ -39,8 +39,8 @@ app = FastAPI(
 
 # ─── CORS ────────────────────────────────────────────────────────────────────
 _cors_origins = [o.strip() for o in settings.CORS_ORIGINS.split(",") if o.strip()]
-if settings.DEBUG:
-    _cors_origins = ["*"]  # Allow all in dev mode only
+if settings.DEBUG and not _cors_origins:
+    _cors_origins = ["http://localhost:5173", "http://localhost:3000"]
 
 app.add_middleware(
     CORSMiddleware,

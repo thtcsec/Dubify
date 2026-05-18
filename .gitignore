@@ -154,14 +154,20 @@ yarn-error.log*
 
 # Dubify Specific
 third_party/
+cookies.txt
+cookies.json
 storage/input/*
 storage/temp/*
 storage/output/*
+storage/artifacts/*
+storage/bgm/*
+!storage/bgm/.gitkeep
 storage/logs/*
 storage/jobs.json
 !storage/input/.gitkeep
 !storage/temp/.gitkeep
 !storage/output/.gitkeep
+!storage/artifacts/.gitkeep
 !storage/logs/.gitkeep
 
 # Models

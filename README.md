@@ -13,9 +13,7 @@ If you are on Windows, you can start both the backend and frontend with a single
 
 ## 🏗️ Manual Execution (Developer Mode)
 
-### 1. Manual Execution (Developer Mode)
-
-To run the project manually, you need to start both the backend and frontend services.
+To run the project manually, start both the backend and frontend services.
 
 #### **Backend (FastAPI)**
 ```bash
@@ -76,6 +74,28 @@ docker compose logs -f
 - `storage/`: Input/Output and temporary processing files.
 - `models/`: Weights for local AI models (Whisper, NLLB).
 - `scripts/`: Legacy autodub and reference logic.
+
+## 🎙️ Script → Video
+
+| Luồng | Nhập kịch bản | Output |
+|-------|----------------|--------|
+| **Studio** | Dán kịch bản + ảnh nền; bật **Dùng nguyên kịch bản** (mặc định) | TTS + phụ đề theo câu + video; BGM tự mix nếu có file trong `storage/bgm/` |
+| **Shorts → Script Mode** | Dán kịch bản | Giống Studio (9:16); engine `local` hoặc video AI (fal.ai) |
+| **Dashboard** | Video/URL | Lồng tiếng + phụ đề |
+
+```bash
+pip install -r backend/requirements.txt   # gồm vietnormalizer
+# Tùy chọn: thả file .mp3 vào storage/bgm/ để có nhạc nền (học từ Pixelle-Video)
+```
+
+## 📚 References & Acknowledgments
+
+| Project | Link | Đã tích hợp trong Dubify |
+|---------|------|-------------------------|
+| **[vietnormalizer](https://github.com/nghimestudio/vietnormalizer)** | [nghimestudio/vietnormalizer](https://github.com/nghimestudio/vietnormalizer) | PyPI dep + `text_normalizer.py` trước TTS tiếng Việt |
+| **[Pixelle-Video](https://github.com/AIDC-AI/Pixelle-Video)** | [AIDC-AI/Pixelle-Video](https://github.com/AIDC-AI/Pixelle-Video) | `script_split.py` (caption theo câu), BGM tùy chọn `storage/bgm/`, `script_service.py` |
+| **[pyvideotrans](https://github.com/jianchang512/pyvideotrans)** | [jianchang512/pyvideotrans](https://github.com/jianchang512/pyvideotrans) | Tham khảo pipeline dubbing đa bước (GPL — không copy code) |
+| **[VibeVoice](https://github.com/microsoft/VibeVoice)** | [microsoft/VibeVoice](https://github.com/microsoft/VibeVoice) | Tham khảo ASR dài + diarization cho roadmap |
 
 ## 🤝 Maintainer
 **Trinh Hoang Tu (thtcsec)**

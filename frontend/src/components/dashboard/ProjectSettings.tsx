@@ -1,4 +1,5 @@
 import { Sparkles } from 'lucide-react';
+import { useI18n } from '@/i18n/I18nProvider';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Label } from '@/components/ui/label';
@@ -37,6 +38,7 @@ export function ProjectSettings({
   canStart,
   onStart
 }: ProjectSettingsProps) {
+  const { t } = useI18n();
   return (
     <div className="relative group h-full">
       <div className="absolute -inset-0.5 bg-gradient-to-b from-indigo-500/20 to-purple-500/20 rounded-2xl blur opacity-0 group-hover:opacity-100 transition duration-500"></div>
@@ -46,12 +48,12 @@ export function ProjectSettings({
             <span className="bg-indigo-500/20 text-indigo-400 p-1.5 rounded-lg">
               <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z"></path><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"></path></svg>
             </span>
-            Project Settings
+            {t.projectSettings.title}
           </CardTitle>
         </CardHeader>
         <CardContent className="space-y-8 flex-1 flex flex-col justify-between">
           <div className="space-y-3">
-            <Label className="text-slate-400 text-xs font-bold uppercase tracking-widest">Target Language</Label>
+            <Label className="text-slate-400 text-xs font-bold uppercase tracking-widest">{t.projectSettings.targetLanguage}</Label>
             <Select value={targetLang} onValueChange={setTargetLang}>
               <SelectTrigger className="bg-black/40 border-white/10 hover:border-white/20 transition-colors h-14 rounded-xl text-base px-4">
                 <SelectValue />
@@ -73,11 +75,11 @@ export function ProjectSettings({
               {isLoading ? (
                   <div className="flex items-center justify-center gap-3">
                     <div className="w-5 h-5 border-2 border-white/30 border-t-white rounded-full animate-spin"></div>
-                    <span>Processing...</span>
+                    <span>{t.projectSettings.processing}</span>
                   </div>
               ) : (
                   <span className="flex items-center gap-2">
-                    <Sparkles className="w-5 h-5 mr-1" /> Start Dubbing
+                    <Sparkles className="w-5 h-5 mr-1" /> {t.projectSettings.startDubbing}
                   </span>
               )}
             </Button>
