@@ -9,12 +9,21 @@ import { Button } from './ui/button';
 import { useJobEvents } from '../lib/jobEvents';
 import { useI18n } from '@/i18n/I18nProvider';
 
+interface ShortPart {
+  index: number;
+  label: string;
+  filename: string;
+  url: string;
+  duration?: number;
+}
+
 interface JobStatusResponse {
   status: 'pending' | 'processing' | 'paused' | 'completed' | 'failed' | 'cancelled';
   progress?: number;
   message?: string | null;
   error?: string | null;
   output_path?: string | null;
+  parts?: ShortPart[];
 }
 
 interface DubbingProgressProps {
@@ -130,8 +139,8 @@ export const DubbingProgress = ({ jobId, onComplete, onError }: DubbingProgressP
 
   return (
     <div className="relative group w-full max-w-lg mx-auto mt-8">
-      <div className="absolute -inset-0.5 bg-gradient-to-b from-indigo-500/20 to-purple-500/20 rounded-2xl blur opacity-100 transition duration-500"></div>
-      <Card className="relative border border-white/10 bg-slate-900/80 backdrop-blur-xl shadow-2xl overflow-hidden rounded-2xl">
+      <div className="pointer-events-none absolute -inset-0.5 bg-gradient-to-b from-indigo-500/20 to-purple-500/20 rounded-2xl blur opacity-100 transition duration-500" />
+      <Card className="relative z-10 border border-white/10 bg-slate-900/80 backdrop-blur-xl shadow-2xl overflow-visible rounded-2xl">
         <CardHeader className="bg-white/5 pb-4 border-b border-white/5">
           <CardTitle className="flex items-center justify-between">
             <span className="text-lg font-bold flex items-center gap-3">
@@ -218,18 +227,59 @@ export const DubbingProgress = ({ jobId, onComplete, onError }: DubbingProgressP
           )}
         </div>
 
-        {isCompleted && data.output_path && (
+        {isCompleted && data.parts && data.parts.length > 0 && (
           <div className="space-y-4 pt-4 border-t border-white/5">
-            {/* Video Preview */}
-            <div className="rounded-xl overflow-hidden border border-white/10 bg-black shadow-lg relative group">
+            <p className="text-sm font-semibold text-emerald-300">{t.shorts.allPartsReady}</p>
+            {data.parts.map((part) => (
+              <div key={part.index} className="rounded-xl border border-white/10 bg-black/40 p-3 space-y-2">
+                <div className="flex items-center justify-between">
+                  <span className="text-sm font-bold text-white">{part.label}</span>
+                  {part.duration != null && (
+                    <span className="text-xs text-slate-500">{part.duration.toFixed(1)}s</span>
+                  )}
+                </div>
+                <video
+                  controls
+                  preload="metadata"
+                  playsInline
+                  className="w-full max-h-64 rounded-lg bg-black"
+                  src={`${apiOrigin}${part.url}`}
+                />
+                <Button
+                  variant="outline"
+                  className="w-full border-emerald-500/30 text-emerald-300"
+                  onClick={() => {
+                    const a = document.createElement('a');
+                    a.href = `${apiOrigin}${part.url}`;
+                    a.download = part.filename;
+                    document.body.appendChild(a);
+                    a.click();
+                    document.body.removeChild(a);
+                  }}
+                >
+                  <Download className="w-4 h-4 mr-2" />
+                  {t.shorts.downloadPart} {part.label}
+                </Button>
+              </div>
+            ))}
+          </div>
+        )}
+
+        {isCompleted && data.output_path && (!data.parts || data.parts.length === 0) && (
+          <div className="space-y-4 pt-4 border-t border-white/5">
+            <div
+              className="relative z-20 rounded-xl border border-white/10 bg-black shadow-lg"
+              onPointerDown={(e) => e.stopPropagation()}
+            >
               <video
+                key={outputFilename}
                 controls
-                className="w-full max-h-[300px] object-contain"
+                preload="auto"
+                playsInline
+                className="block w-full max-h-[min(70vh,560px)] bg-black"
+                style={{ pointerEvents: 'auto', touchAction: 'manipulation' }}
                 src={outputFilename ? `${apiOrigin}/storage/output/${outputFilename}` : undefined}
-              >
-                Your browser does not support the video tag.
-              </video>
-              <div className="absolute inset-0 ring-1 ring-inset ring-white/10 pointer-events-none rounded-xl"></div>
+              />
             </div>
             <Button className="w-full btn-glow bg-gradient-to-r from-indigo-600 to-purple-600 hover:from-indigo-500 hover:to-purple-500 text-white font-bold py-6 rounded-xl text-base shadow-[0_0_20px_rgba(79,70,229,0.3)] hover:shadow-[0_0_25px_rgba(79,70,229,0.5)] transition-all transform hover:-translate-y-0.5" onClick={() => {
               const filename = outputFilename;

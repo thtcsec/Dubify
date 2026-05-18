@@ -1,0 +1,96 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+  <meta charset="UTF-8" />
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    html, body {
+      width: 1080px;
+      height: 1920px;
+      overflow: hidden;
+      font-family: 'Segoe UI', 'Arial', 'PingFang SC', sans-serif;
+      background: #0c1222;
+    }
+    .scene {
+      width: 1080px;
+      height: 1920px;
+      position: relative;
+      display: flex;
+      flex-direction: column;
+    }
+    .bg {
+      position: absolute;
+      inset: 0;
+      background-size: cover;
+      background-position: center;
+      filter: brightness(0.78) saturate(1.2) contrast(1.05);
+      transform: scale(1.05);
+    }
+    .overlay {
+      position: absolute;
+      inset: 0;
+      background: linear-gradient(
+        180deg,
+        rgba(12, 18, 34, 0.25) 0%,
+        rgba(12, 18, 34, 0.55) 45%,
+        rgba(8, 12, 24, 0.92) 100%
+      );
+    }
+    .content {
+      position: relative;
+      z-index: 2;
+      flex: 1;
+      display: flex;
+      flex-direction: column;
+      justify-content: flex-end;
+      padding: 80px 64px 140px;
+      gap: 24px;
+    }
+    .badge {
+      align-self: flex-start;
+      font-size: 30px;
+      font-weight: 700;
+      letter-spacing: 0.1em;
+      text-transform: uppercase;
+      color: #bae6fd;
+      border: 2px solid rgba(186, 230, 253, 0.5);
+      padding: 12px 28px;
+      border-radius: 999px;
+      background: rgba(14, 165, 233, 0.2);
+    }
+    .title {
+      font-size: 76px;
+      font-weight: 800;
+      line-height: 1.12;
+      color: #ffffff;
+      text-shadow: 0 6px 28px rgba(0, 0, 0, 0.65);
+    }
+    .text {
+      font-size: 54px;
+      font-weight: 600;
+      line-height: 1.42;
+      color: #f1f5f9;
+      max-height: 560px;
+      overflow: hidden;
+      text-shadow: 0 4px 18px rgba(0, 0, 0, 0.55);
+    }
+    .bar {
+      width: 140px;
+      height: 8px;
+      border-radius: 4px;
+      background: linear-gradient(90deg, #38bdf8, #a78bfa);
+    }
+  </style>
+</head>
+<body>
+  <div class="scene">
+    <div class="bg" style="background-image: url('{{IMAGE_URL}}');"></div>
+    <div class="overlay"></div>
+    <div class="content">
+      {{TITLE_BLOCK}}
+      <div class="bar"></div>
+      <div class="text">{{TEXT}}</div>
+    </div>
+  </div>
+</body>
+</html>

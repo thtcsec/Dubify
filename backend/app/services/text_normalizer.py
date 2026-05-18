@@ -65,7 +65,7 @@ def _get_normalizer():
     return _normalizer_instance
 
 
-def normalize_for_tts(text: str, target_lang: str = "vi") -> str:
+def normalize_for_tts(text: str, target_lang: str = "vi", *, transliterate: bool = True) -> str:
     """
     Normalize text before sending to TTS.
 
@@ -86,9 +86,12 @@ def normalize_for_tts(text: str, target_lang: str = "vi") -> str:
     if target_lang.lower() not in ("vi", "vie", "vie_latn"):
         return text
 
+    if not transliterate:
+        return _normalize_vietnamese_light(text)
+
     normalizer = _get_normalizer()
     if normalizer is None:
-        return text
+        return _normalize_vietnamese_light(text)
 
     try:
         normalized = normalizer.normalize(text)
@@ -97,4 +100,15 @@ def normalize_for_tts(text: str, target_lang: str = "vi") -> str:
         return normalized
     except Exception as e:
         logger.error("Text normalization failed for '%s...': %s", text[:40], e)
-        return text
+        return _normalize_vietnamese_light(text)
+
+
+def _normalize_vietnamese_light(text: str) -> str:
+    """Keep Vietnamese spelling; strip smart quotes that break TTS chunking."""
+    import re
+
+    cleaned = (text or "").replace("\r\n", "\n")
+    cleaned = re.sub(r"[\u2018\u2019\u201a\u201b\u2032`]", " ", cleaned)
+    cleaned = re.sub(r'[\u201c\u201d"]', " ", cleaned)
+    cleaned = re.sub(r"\s+", " ", cleaned).strip()
+    return cleaned

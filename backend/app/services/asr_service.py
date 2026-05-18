@@ -16,9 +16,10 @@ logger = logging.getLogger(__name__)
 
 class ASRService:
     def __init__(self, model_size: str = "base", device: Optional[str] = None):
-        import torch
+        from app.core.gpu import resolve_whisper_device
+
         self.model_size = model_size
-        self.device = device or ("cuda" if torch.cuda.is_available() else "cpu")
+        self.device = device or resolve_whisper_device()
         self.model = None
 
     def _load_model(self):

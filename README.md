@@ -84,18 +84,39 @@ docker compose logs -f
 | **Dashboard** | Video/URL | Lồng tiếng + phụ đề |
 
 ```bash
-pip install -r backend/requirements.txt   # gồm vietnormalizer
+pip install -r backend/requirements.txt   # gồm vietnormalizer + playwright
+python -m playwright install chromium   # Studio Script→Video (render HTML kiểu Pixelle-Video)
+# GPU (RTX): cài PyTorch CUDA — pip install torch torchaudio --index-url https://download.pytorch.org/whl/cu124
+# .env: USE_GPU=true, WHISPER_DEVICE=auto, VIDEO_ENCODER=auto (NVENC encode khi có)
 # Tùy chọn: thả file .mp3 vào storage/bgm/ để có nhạc nền (học từ Pixelle-Video)
+```
+
+**Studio Script → Video (Pixelle/TikTok-style):** template `tiktok_news` (Playwright HTML + phụ đề highlight từng từ). Chia cảnh bằng marker `[Tiêu đề cảnh]`:
+
+```text
+[Mở đầu]
+Đoạn thoại cảnh 1...
+
+[Phần chính]
+Đoạn thoại cảnh 2...
 ```
 
 ## 📚 References & Acknowledgments
 
 | Project | Link | Đã tích hợp trong Dubify |
 |---------|------|-------------------------|
-| **[vietnormalizer](https://github.com/nghimestudio/vietnormalizer)** | [nghimestudio/vietnormalizer](https://github.com/nghimestudio/vietnormalizer) | PyPI dep + `text_normalizer.py` trước TTS tiếng Việt |
-| **[Pixelle-Video](https://github.com/AIDC-AI/Pixelle-Video)** | [AIDC-AI/Pixelle-Video](https://github.com/AIDC-AI/Pixelle-Video) | `script_split.py` (caption theo câu), BGM tùy chọn `storage/bgm/`, `script_service.py` |
-| **[pyvideotrans](https://github.com/jianchang512/pyvideotrans)** | [jianchang512/pyvideotrans](https://github.com/jianchang512/pyvideotrans) | Tham khảo pipeline dubbing đa bước (GPL — không copy code) |
-| **[VibeVoice](https://github.com/microsoft/VibeVoice)** | [microsoft/VibeVoice](https://github.com/microsoft/VibeVoice) | Tham khảo ASR dài + diarization cho roadmap |
+| **[Pixelle-Video](https://github.com/AIDC-AI/Pixelle-Video)** | [AIDC-AI/Pixelle-Video](https://github.com/AIDC-AI/Pixelle-Video) | HTML scene cards, Playwright render, `script_split.py`, BGM `storage/bgm/`, chia cảnh `[Section]` |
+| **[OpenReel](https://github.com/Augani/openreel-video)** | [Augani/openreel-video](https://github.com/Augani/openreel-video) | Studio Editor: timeline, transport, cue inspector |
+| **[vietnormalizer](https://github.com/nghimestudio/vietnormalizer)** | [nghimestudio/vietnormalizer](https://github.com/nghimestudio/vietnormalizer) | `text_normalizer.py` trước TTS tiếng Việt |
+| **[edge-tts](https://github.com/rany2/edge-tts)** | [rany2/edge-tts](https://github.com/rany2/edge-tts) | Hybrid/online TTS + voice catalog |
+| **[faster-whisper](https://github.com/SYSTRAN/faster-whisper)** | [SYSTRAN/faster-whisper](https://github.com/SYSTRAN/faster-whisper) | Local ASR (CUDA) cho dubbing |
+| **[Playwright](https://github.com/microsoft/playwright)** | [microsoft/playwright](https://github.com/microsoft/playwright) | Chụp HTML scene 1080×1920 / 1920×1080 |
+| **[FFmpeg](https://ffmpeg.org/)** | [ffmpeg.org](https://ffmpeg.org/) | xfade chuyển cảnh, burn ASS, NVENC, clip 9:16 |
+| **[libass](https://github.com/libass/libass)** | [libass/libass](https://github.com/libass/libass) | Karaoke/highlight phụ đề Studio (ASS) |
+| **[PySceneDetect](https://github.com/Breakthrough/PySceneDetect)** | [Breakthrough/PySceneDetect](https://github.com/Breakthrough/PySceneDetect) | Roadmap: cắt clip theo shot |
+| **[pyvideotrans](https://github.com/jianchang512/pyvideotrans)** | [jianchang512/pyvideotrans](https://github.com/jianchang512/pyvideotrans) | Tham khảo pipeline dub (GPL — không copy code) |
+| **[VibeVoice](https://github.com/microsoft/VibeVoice)** | [microsoft/VibeVoice](https://github.com/microsoft/VibeVoice) | Roadmap: ASR dài + diarization |
+| **[Demucs](https://github.com/facebookresearch/demucs)** | [facebookresearch/demucs](https://github.com/facebookresearch/demucs) | Tách BGM/vocal (tùy chọn `ENABLE_BGM_RETENTION`) |
 
 ## 🤝 Maintainer
 **Trinh Hoang Tu (thtcsec)**

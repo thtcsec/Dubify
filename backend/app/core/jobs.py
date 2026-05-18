@@ -170,6 +170,7 @@ class JobManager:
         error: Optional[str] = None,
         message: Optional[str] = None,
         progress: Optional[int] = None,
+        parts: Optional[List[Dict[str, Any]]] = None,
     ):
         with self._lock:
             if job_id not in self.jobs:
@@ -193,6 +194,8 @@ class JobManager:
                 job["message"] = message
             if progress is not None:
                 job["progress"] = progress
+            if parts is not None:
+                job["parts"] = parts
             self._save()
             self._emit_event("updated", job_id)
 

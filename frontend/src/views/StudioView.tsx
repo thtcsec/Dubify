@@ -1,21 +1,17 @@
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useRef, useMemo } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { Button } from '../components/ui/button';
 import { Label } from '../components/ui/label';
 import { Textarea } from '../components/ui/textarea';
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '../components/ui/select';
+import { Input } from '../components/ui/input';
+import { Select, SelectContent, SelectGroup, SelectItem, SelectLabel, SelectTrigger, SelectValue } from '../components/ui/select';
 import { Switch } from '../components/ui/switch';
 import { DubbingProgress } from '../components/DubbingProgress';
 import { isTimeoutError, extractApiErrorMessage } from '../lib/errors';
 import api from '../lib/api';
 import { useI18n } from '@/i18n/I18nProvider';
-
-interface Voice {
-  id: string;
-  name: string;
-  lang: string;
-  gender: string;
-}
+import { StudioScenePreview } from '@/components/studio/StudioScenePreview';
+import { parseVoicesResponse, type Voice } from '@/lib/voices';
 
 const ASPECT_RATIO_OPTIONS = [
   { value: '16:9', label: '16:9 Landscape' },
@@ -43,6 +39,15 @@ export function StudioView({ targetLang, setTargetLang }: StudioViewProps) {
   const [isDragOver, setIsDragOver] = useState(false);
   const [aspectRatio, setAspectRatio] = useState('16:9');
   const [useRawScript, setUseRawScript] = useState(true);
+  const [studioVisualMode, setStudioVisualMode] = useState<'html_scenes' | 'classic'>('html_scenes');
+  const [headerEnabled, setHeaderEnabled] = useState(false);
+  const [headerText, setHeaderText] = useState('');
+  const [headerOpacity, setHeaderOpacity] = useState(85);
+  const [headerImage, setHeaderImage] = useState<File | null>(null);
+  const [footerEnabled, setFooterEnabled] = useState(false);
+  const [footerText, setFooterText] = useState('');
+  const [footerOpacity, setFooterOpacity] = useState(85);
+  const [footerImage, setFooterImage] = useState<File | null>(null);
 
   // Voice
   const [voices, setVoices] = useState<Voice[]>([]);
@@ -51,7 +56,7 @@ export function StudioView({ targetLang, setTargetLang }: StudioViewProps) {
   const audioRef = useRef<HTMLAudioElement | null>(null);
 
   useEffect(() => {
-    api.get('/voices').then(res => setVoices(res.data)).catch(() => {});
+    api.get('/voices').then((res) => setVoices(parseVoicesResponse(res.data))).catch(() => {});
   }, []);
 
   // Estimated duration: ~150 words per minute for TTS
@@ -147,8 +152,8 @@ export function StudioView({ targetLang, setTargetLang }: StudioViewProps) {
   };
 
   const handleGenerate = async () => {
-    if (!newsText.trim() || (!imageFile && !imageUrl)) {
-        setError("Please provide both news text and a background image.");
+    if (!newsText.trim()) {
+        setError(t.studio.needScript);
         return;
     }
     
@@ -169,7 +174,21 @@ export function StudioView({ targetLang, setTargetLang }: StudioViewProps) {
     if (manualDuration !== null && manualDuration > 0) {
       formData.append('duration_seconds', String(manualDuration));
     }
-    
+    formData.append('studio_visual_mode', studioVisualMode);
+    formData.append('studio_template', 'tiktok_news');
+    formData.append('header_enabled', headerEnabled ? 'true' : 'false');
+    formData.append('footer_enabled', footerEnabled ? 'true' : 'false');
+    if (headerEnabled) {
+      formData.append('header_text', headerText);
+      formData.append('header_opacity', String(headerOpacity / 100));
+      if (headerImage) formData.append('header_image', headerImage);
+    }
+    if (footerEnabled) {
+      formData.append('footer_text', footerText);
+      formData.append('footer_opacity', String(footerOpacity / 100));
+      if (footerImage) formData.append('footer_image', footerImage);
+    }
+
     try {
       const response = await api.post('/studio', formData);
       setJobId(response.data.job_id);
@@ -193,11 +212,80 @@ export function StudioView({ targetLang, setTargetLang }: StudioViewProps) {
     setAspectRatio('16:9');
     setError(null);
     setManualDuration(null);
+    setHeaderEnabled(false);
+    setHeaderText('');
+    setHeaderOpacity(85);
+    setHeaderImage(null);
+    setFooterEnabled(false);
+    setFooterText('');
+    setFooterOpacity(85);
+    setFooterImage(null);
     if (audioRef.current) audioRef.current.pause();
   };
 
-  const filteredVoices = voices.filter(v => v.lang === targetLang || voices.length === 0);
-  const displayVoices = filteredVoices.length > 0 ? filteredVoices : voices;
+  const renderBrandingBand = (
+    id: 'header' | 'footer',
+    enabled: boolean,
+    setEnabled: (v: boolean) => void,
+    text: string,
+    setText: (v: string) => void,
+    opacity: number,
+    setOpacity: (v: number) => void,
+    image: File | null,
+    setImage: (f: File | null) => void,
+    label: string,
+  ) => (
+    <motion.div
+      key={id}
+      initial={false}
+      animate={{ opacity: enabled ? 1 : 0.65 }}
+      className="rounded-xl border border-white/10 bg-black/30 p-4 space-y-3"
+    >
+      <motion.div layout className="flex items-center justify-between gap-3">
+        <p className="text-sm font-medium text-slate-200">{label}</p>
+        <Switch checked={enabled} onCheckedChange={setEnabled} />
+      </motion.div>
+      {enabled && (
+        <motion.div layout initial={{ opacity: 0, height: 0 }} animate={{ opacity: 1, height: 'auto' }} className="space-y-3">
+          <Input
+            value={text}
+            onChange={(e) => setText(e.target.value)}
+            placeholder={t.studio.brandingTextPlaceholder}
+            className="bg-black/40 border-white/10 h-10 rounded-lg"
+          />
+          <motion.div layout className="space-y-1.5">
+            <Label className="text-xs text-slate-500">{t.studio.brandingLogo}</Label>
+            <Input
+              type="file"
+              accept="image/*"
+              className="bg-black/40 border-white/10 text-xs file:mr-3 file:rounded-md file:border-0 file:bg-indigo-500/20 file:px-3 file:py-1.5 file:text-indigo-200"
+              onChange={(e) => setImage(e.target.files?.[0] ?? null)}
+            />
+            {image && <p className="text-[11px] text-slate-500 truncate">{image.name}</p>}
+          </motion.div>
+          <motion.div layout className="space-y-1.5">
+            <motion.div className="flex justify-between text-xs text-slate-500">
+              <span>{t.studio.brandingOpacity}</span>
+              <span>{opacity}%</span>
+            </motion.div>
+            <input
+              type="range"
+              min={5}
+              max={100}
+              value={opacity}
+              onChange={(e) => setOpacity(Number(e.target.value))}
+              className="w-full accent-indigo-500"
+            />
+          </motion.div>
+        </motion.div>
+      )}
+    </motion.div>
+  );
+
+  const voiceList = useMemo(() => parseVoicesResponse(voices), [voices]);
+  const viVoices = voiceList.filter((v) => v.category === 'vi' || (!v.category && v.lang === 'vi'));
+  const enVoices = voiceList.filter((v) => v.category === 'en' || (!v.category && v.lang === 'en'));
+  const otherVoices = voiceList.filter((v) => v.category === 'other' || (!v.category && v.lang !== 'vi' && v.lang !== 'en'));
   const previewAspectRatio = aspectRatio.replace(':', ' / ');
   const previewFrameClass = aspectRatio === '9:16' || aspectRatio === '3:4'
     ? 'max-w-[420px]'
@@ -272,8 +360,9 @@ export function StudioView({ targetLang, setTargetLang }: StudioViewProps) {
                         <span className="bg-blue-500/20 text-blue-400 p-1.5 rounded-lg">
                           <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" /></svg>
                         </span>
-                        Background Visual
+                        {t.studio.backgroundLabel}
                       </Label>
+                      <p className="text-xs text-slate-500 mb-3">{t.studio.backgroundOptional}</p>
                       <div
                         className="relative"
                         onDragOver={(event) => {
@@ -341,7 +430,8 @@ export function StudioView({ targetLang, setTargetLang }: StudioViewProps) {
                               <Label className="text-slate-400 text-xs font-bold uppercase tracking-widest">Target Language</Label>
                               <Select value={targetLang} onValueChange={(v) => {
                                 setTargetLang(v);
-                                const firstMatch = voices.find(voice => voice.lang === v);
+                                const pool = v === 'en' ? enVoices : v === 'vi' ? viVoices : voiceList;
+                                const firstMatch = pool[0] ?? voiceList.find((voice) => voice.lang === v);
                                 if (firstMatch) setSelectedVoice(firstMatch.id);
                               }}>
                               <SelectTrigger className="w-full bg-black/40 border-white/10 hover:border-white/20 transition-colors h-11 rounded-xl">
@@ -368,15 +458,49 @@ export function StudioView({ targetLang, setTargetLang }: StudioViewProps) {
                                 <SelectTrigger className="flex-1 bg-black/40 border-white/10 hover:border-white/20 transition-colors h-11 rounded-xl">
                                     <SelectValue placeholder="Select voice" />
                                 </SelectTrigger>
-                                <SelectContent className="bg-slate-900 border-white/10 rounded-xl shadow-2xl">
-                                    {displayVoices.map(v => (
-                                      <SelectItem key={v.id} value={v.id}>
-                                        <div className="flex items-center gap-2">
-                                          <span className={`w-2 h-2 rounded-full ${v.gender === 'Female' ? 'bg-pink-500' : 'bg-blue-500'}`}></span>
-                                          {v.name}
-                                        </div>
-                                      </SelectItem>
-                                    ))}
+                                <SelectContent className="bg-slate-900 border-white/10 rounded-xl shadow-2xl max-h-72">
+                                    {viVoices.length > 0 && (
+                                      <SelectGroup>
+                                        <SelectLabel className="text-cyan-400/90 text-xs uppercase tracking-wider">Tiếng Việt</SelectLabel>
+                                        {viVoices.map((v) => (
+                                          <SelectItem key={v.id} value={v.id}>
+                                            <div className="flex flex-col gap-0.5">
+                                              <span className="flex items-center gap-2">
+                                                <span className={`w-2 h-2 rounded-full ${v.gender === 'Female' ? 'bg-pink-500' : 'bg-blue-500'}`} />
+                                                {v.name}
+                                                {v.accent && <span className="text-[10px] text-slate-500">{v.accent}</span>}
+                                              </span>
+                                              {v.style && <span className="text-[10px] text-slate-500 pl-4">{v.style}</span>}
+                                            </div>
+                                          </SelectItem>
+                                        ))}
+                                      </SelectGroup>
+                                    )}
+                                    {enVoices.length > 0 && (
+                                      <SelectGroup>
+                                        <SelectLabel className="text-violet-400/90 text-xs uppercase tracking-wider">English</SelectLabel>
+                                        {enVoices.map((v) => (
+                                          <SelectItem key={v.id} value={v.id}>
+                                            <div className="flex flex-col gap-0.5">
+                                              <span className="flex items-center gap-2">
+                                                <span className={`w-2 h-2 rounded-full ${v.gender === 'Female' ? 'bg-pink-500' : 'bg-blue-500'}`} />
+                                                {v.name}
+                                                {v.accent && <span className="text-[10px] text-slate-500">{v.accent}</span>}
+                                              </span>
+                                              {v.style && <span className="text-[10px] text-slate-500 pl-4">{v.style}</span>}
+                                            </div>
+                                          </SelectItem>
+                                        ))}
+                                      </SelectGroup>
+                                    )}
+                                    {otherVoices.length > 0 && (
+                                      <SelectGroup>
+                                        <SelectLabel className="text-slate-500 text-xs uppercase tracking-wider">Khác</SelectLabel>
+                                        {otherVoices.map((v) => (
+                                          <SelectItem key={v.id} value={v.id}>{v.name}</SelectItem>
+                                        ))}
+                                      </SelectGroup>
+                                    )}
                                 </SelectContent>
                                 </Select>
                                 <Button 
@@ -393,6 +517,35 @@ export function StudioView({ targetLang, setTargetLang }: StudioViewProps) {
                                 </Button>
                               </div>
                           </div>
+
+                          <div className="space-y-2.5">
+                              <Label className="text-slate-400 text-xs font-bold uppercase tracking-widest">{t.studio.visualMode}</Label>
+                              <Select value={studioVisualMode} onValueChange={(v) => setStudioVisualMode(v as 'html_scenes' | 'classic')}>
+                                <SelectTrigger className="w-full bg-black/40 border-white/10 h-11 rounded-xl">
+                                  <SelectValue />
+                                </SelectTrigger>
+                                <SelectContent className="bg-slate-900 border-white/10 rounded-xl">
+                                  <SelectItem value="html_scenes">{t.studio.modeHtmlScenes}</SelectItem>
+                                  <SelectItem value="classic">{t.studio.modeClassic}</SelectItem>
+                                </SelectContent>
+                              </Select>
+                              <p className="text-[11px] text-slate-500 leading-snug">{t.studio.sectionHint}</p>
+                          </div>
+
+                          {studioVisualMode === 'html_scenes' && (
+                            <div className="rounded-xl border border-cyan-500/20 bg-cyan-500/5 p-3">
+                              <StudioScenePreview script={newsText} imagePreview={imagePreview} aspectRatio={aspectRatio} />
+                            </div>
+                          )}
+
+                          <motion.div layout className="space-y-3">
+                            <motion.div layout>
+                              <Label className="text-slate-400 text-xs font-bold uppercase tracking-widest">{t.studio.brandingTitle}</Label>
+                              <p className="text-[11px] text-slate-500 mt-1 leading-snug">{t.studio.brandingHint}</p>
+                            </motion.div>
+                            {renderBrandingBand('header', headerEnabled, setHeaderEnabled, headerText, setHeaderText, headerOpacity, setHeaderOpacity, headerImage, setHeaderImage, t.studio.headerLabel)}
+                            {renderBrandingBand('footer', footerEnabled, setFooterEnabled, footerText, setFooterText, footerOpacity, setFooterOpacity, footerImage, setFooterImage, t.studio.footerLabel)}
+                          </motion.div>
 
                           <div className="space-y-2.5">
                               <Label className="text-slate-400 text-xs font-bold uppercase tracking-widest">Canvas Format</Label>

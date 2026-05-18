@@ -2,17 +2,26 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   Clapperboard,
   Download,
+  Eye,
   Film,
   Merge,
   Pause,
   Play,
   Scissors,
+  Smartphone,
   Volume2,
   Wand2,
 } from 'lucide-react';
 import { Badge } from '../components/ui/badge';
 import { Button } from '../components/ui/button';
+import { Label } from '../components/ui/label';
+import { Slider } from '../components/ui/slider';
+import { Switch } from '../components/ui/switch';
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '../components/ui/tabs';
+import { ClipExportPanel } from '../components/editor/ClipExportPanel';
+import { SubtitlePreviewOverlay } from '../components/editor/SubtitlePreviewOverlay';
 import api, { apiOrigin } from '../lib/api';
+import { DEFAULT_SUBTITLE_STYLE, type SubtitleStyle } from '../lib/subtitleStyle';
 import { useJobEvents } from '../lib/jobEvents';
 import { useI18n } from '@/i18n/I18nProvider';
 import {
@@ -47,6 +56,9 @@ export function StudioEditorView() {
   const [isBurning, setIsBurning] = useState(false);
   const [dirty, setDirty] = useState(false);
   const [statusMsg, setStatusMsg] = useState<string | null>(null);
+  const [editorTab, setEditorTab] = useState<'subtitles' | 'clips'>('subtitles');
+  const [previewBurn, setPreviewBurn] = useState(true);
+  const [subStyle, setSubStyle] = useState<SubtitleStyle>(DEFAULT_SUBTITLE_STYLE);
 
   const fetchCompletedJobs = useCallback(async () => {
     setIsLoading(true);
@@ -63,7 +75,9 @@ export function StudioEditorView() {
   }, []);
 
   useEffect(() => {
-    void fetchCompletedJobs();
+    queueMicrotask(() => {
+      void fetchCompletedJobs();
+    });
   }, [fetchCompletedJobs]);
 
   useJobEvents<Job>((payload) => {
@@ -257,7 +271,31 @@ export function StudioEditorView() {
         </div>
       )}
 
-      <div className="flex flex-1 min-h-0 gap-3">
+      <Tabs
+        value={editorTab}
+        onValueChange={(v) => setEditorTab(v as 'subtitles' | 'clips')}
+        className="flex flex-1 min-h-0 flex-col gap-2"
+      >
+        <TabsList className="w-fit bg-black/40 border border-white/10">
+          <TabsTrigger value="subtitles" className="text-xs gap-1">
+            <Eye className="w-3.5 h-3.5" />
+            {t.editor.tabSubtitles}
+          </TabsTrigger>
+          <TabsTrigger value="clips" className="text-xs gap-1">
+            <Smartphone className="w-3.5 h-3.5" />
+            {t.editor.tabClips}
+          </TabsTrigger>
+        </TabsList>
+
+        <TabsContent value="clips" className="flex-1 min-h-0 mt-0 data-[state=inactive]:hidden">
+          <div className="h-full min-h-[400px] rounded-xl border border-white/10 bg-[#0a0d14] overflow-hidden flex flex-col">
+            <ClipExportPanel jobId={selectedJobId} />
+            <p className="px-4 pb-3 text-[11px] text-slate-500 shrink-0">{t.clips.tabNote}</p>
+          </div>
+        </TabsContent>
+
+        <TabsContent value="subtitles" className="flex-1 min-h-0 mt-0 data-[state=inactive]:hidden">
+      <div className="flex flex-1 min-h-0 gap-3 h-full">
         {/* Project bin */}
         <aside className="w-56 shrink-0 rounded-xl border border-white/10 bg-[#0a0d14] flex flex-col overflow-hidden">
           <div className="border-b border-white/10 px-3 py-2 text-xs font-semibold uppercase tracking-wider text-slate-400">
@@ -304,18 +342,32 @@ export function StudioEditorView() {
             )}
           </div>
 
-          {/* Preview */}
-          <div className="relative flex-1 min-h-[200px] bg-black flex items-center justify-center">
+          {/* Preview + burn subtitle overlay */}
+          <div className="relative flex-1 min-h-[200px] bg-black flex items-center justify-center overflow-hidden">
             {videoUrl ? (
-              <video
-                ref={videoRef}
-                className="max-h-full max-w-full"
-                src={videoUrl}
-                onLoadedMetadata={(e) => setDuration(e.currentTarget.duration)}
-                onTimeUpdate={(e) => setPlayhead(e.currentTarget.currentTime)}
-                onPlay={() => setIsPlaying(true)}
-                onPause={() => setIsPlaying(false)}
-              />
+              <>
+                <video
+                  ref={videoRef}
+                  className="max-h-full max-w-full"
+                  src={videoUrl}
+                  onLoadedMetadata={(e) => setDuration(e.currentTarget.duration)}
+                  onTimeUpdate={(e) => setPlayhead(e.currentTarget.currentTime)}
+                  onPlay={() => setIsPlaying(true)}
+                  onPause={() => setIsPlaying(false)}
+                />
+                <SubtitlePreviewOverlay
+                  cues={cues}
+                  playhead={playhead}
+                  enabled={previewBurn}
+                  style={subStyle}
+                  emptyHint={t.editor.previewEmpty}
+                />
+                {previewBurn && (
+                  <div className="absolute top-2 left-2 rounded-md bg-black/60 px-2 py-0.5 text-[10px] text-cyan-200 border border-cyan-500/30">
+                    {t.editor.previewOn}
+                  </div>
+                )}
+              </>
             ) : (
               <p className="text-sm text-slate-500">{t.editor.needCompleted}</p>
             )}
@@ -400,6 +452,33 @@ export function StudioEditorView() {
               ))
             )}
           </div>
+          <div className="border-t border-white/10 p-3 space-y-3 bg-black/20">
+            <div className="flex items-center justify-between">
+              <Label className="text-[10px] uppercase text-slate-500">{t.editor.previewOn}</Label>
+              <Switch checked={previewBurn} onCheckedChange={setPreviewBurn} />
+            </div>
+            <p className="text-[10px] text-slate-500 leading-snug">{t.editor.previewHint}</p>
+            <div className="space-y-2">
+              <Label className="text-[10px] text-slate-400">{t.editor.fontSize}</Label>
+              <Slider
+                min={70}
+                max={130}
+                step={5}
+                value={[Math.round(subStyle.fontScale * 100)]}
+                onValueChange={([v]) => setSubStyle((s) => ({ ...s, fontScale: v / 100 }))}
+              />
+            </div>
+            <div className="space-y-2">
+              <Label className="text-[10px] text-slate-400">{t.editor.bottomMargin}</Label>
+              <Slider
+                min={70}
+                max={140}
+                step={5}
+                value={[Math.round(subStyle.marginScale * 100)]}
+                onValueChange={([v]) => setSubStyle((s) => ({ ...s, marginScale: v / 100 }))}
+              />
+            </div>
+          </div>
           {selectedCue && (
             <div className="border-t border-white/10 p-3 space-y-3 bg-black/30">
               <label className="text-[10px] uppercase text-slate-500">{t.editor.cueText}</label>
@@ -420,6 +499,8 @@ export function StudioEditorView() {
           )}
         </aside>
       </div>
+        </TabsContent>
+      </Tabs>
     </div>
   );
 }

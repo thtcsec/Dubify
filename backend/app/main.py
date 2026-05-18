@@ -21,8 +21,11 @@ logger = logging.getLogger(__name__)
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     # Startup
+    from app.core.gpu import log_gpu_status
+
     worker.start()
     job_manager.cleanup_old_jobs(max_age_days=30)
+    log_gpu_status()
     logger.info("Dubify started.")
     yield
     # Shutdown

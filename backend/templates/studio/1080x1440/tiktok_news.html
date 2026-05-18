@@ -1,0 +1,35 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+<meta charset="UTF-8"/>
+<style>
+*{box-sizing:border-box;margin:0;padding:0}
+html,body{width:1080px;height:1440px;overflow:hidden;font-family:'Segoe UI',Arial,sans-serif;background:#050a18}
+.scene{width:1080px;height:1440px;position:relative;overflow:hidden}
+.bg{position:absolute;inset:0}
+.bg img{width:100%;height:100%;object-fit:cover;animation:kenBurns 14s ease-out forwards}
+.overlay{position:absolute;inset:0;background:linear-gradient(180deg,rgba(5,10,24,.5),rgba(2,6,23,.94))}
+.glow{position:absolute;width:480px;height:480px;border-radius:50%;background:radial-gradient(circle,rgba(56,189,248,.25),transparent 70%);top:-100px;right:-60px;animation:glowPulse 4s ease-in-out infinite alternate}
+@keyframes glowPulse{from{opacity:.55;transform:scale(1)}to{opacity:1;transform:scale(1.12)}}
+.page{position:relative;z-index:2;height:100%;padding:64px 56px 120px;display:flex;flex-direction:column;justify-content:flex-end;gap:32px}
+.title{font-size:68px;font-weight:900;line-height:1.1;color:#fff;text-align:center;text-shadow:0 8px 36px rgba(0,0,0,.6);animation:titlePop .9s cubic-bezier(.22,1,.36,1) .12s both}
+.hook-card{max-width:92%;background:rgba(255,255,255,.13);border:1px solid rgba(255,255,255,.28);backdrop-filter:blur(18px);border-radius:24px;padding:36px 32px;animation:cardPop 1s cubic-bezier(.22,1,.36,1) .28s both;box-shadow:0 28px 70px rgba(0,0,0,.45)}
+.hook{font-size:44px;font-weight:700;color:#f8fafc;line-height:1.45;white-space:pre-line}
+.bar{width:120px;height:6px;border-radius:3px;background:linear-gradient(90deg,#38bdf8,#a78bfa);margin-top:18px}
+@keyframes titlePop{from{opacity:0;transform:translateY(32px)}to{opacity:1;transform:translateY(0)}}
+@keyframes cardPop{from{opacity:0;transform:translateY(56px) scale(.94)}to{opacity:1;transform:translateY(0) scale(1)}}
+@keyframes kenBurns{from{transform:scale(1.02)}to{transform:scale(1.09)}}
+</style>
+</head>
+<body>
+<div class="scene">
+  <div class="bg"><img src="{IMAGE_URL}" alt=""/></div>
+  <div class="overlay"></div>
+  <div class="glow"></div>
+  <div class="page">
+    {TITLE_BLOCK}
+    <div class="hook-card"><div class="hook">{TEXT}</div></div>
+  </div>
+</div>
+</body>
+</html>

@@ -10,9 +10,20 @@ from typing import Optional, Tuple, Callable
 import numpy as np
 from PIL import Image
 from app.core.config import settings
+from app.core.gpu import video_encoder_args
 from app.utils.subtitles import wrap_subtitle_text
 
 logger = logging.getLogger(__name__)
+
+# Pixelle-style scene transitions (FFmpeg xfade)
+STUDIO_XFADE_TRANSITIONS = (
+    "fade",
+    "smoothleft",
+    "smoothright",
+    "slideup",
+    "slideright",
+    "fadeblack",
+)
 
 class VideoService:
     ASPECT_RATIOS = {
@@ -61,6 +72,22 @@ class VideoService:
         return output_path
 
     @staticmethod
+    def fit_image_cover(source: Path, output: Path, width: int, height: int) -> Path:
+        """Cover-crop image to exact canvas (fixes wrong aspect when switching 9:16 ↔ 16:9)."""
+        from PIL import Image as PILImage
+
+        img = PILImage.open(source).convert("RGB")
+        src_w, src_h = img.size
+        scale = max(width / src_w, height / src_h)
+        resized = img.resize((int(src_w * scale), int(src_h * scale)), PILImage.Resampling.LANCZOS)
+        left = (resized.width - width) // 2
+        top = (resized.height - height) // 2
+        cropped = resized.crop((left, top, left + width, top + height))
+        output.parent.mkdir(parents=True, exist_ok=True)
+        cropped.save(output, "PNG")
+        return output
+
+    @staticmethod
     def _format_ass_time(seconds: float) -> str:
         total_cs = int(max(seconds, 0) * 100)
         hours = total_cs // 360000
@@ -99,23 +126,37 @@ class VideoService:
             return VideoService.ASPECT_RATIOS["16:9"]
 
     @staticmethod
-    def _subtitle_style_for_height(height: int) -> Tuple[int, int]:
+    def _subtitle_style_for_height(height: int, scale: float = 1.0) -> Tuple[int, int]:
         """Font size and bottom margin scaled to output resolution."""
-        font_size = max(16, min(26, int(height * 0.032)))
-        margin_v = max(32, int(height * 0.075))
+        font_size = max(18, min(40, int(height * 0.038 * scale)))
+        margin_v = max(36, int(height * 0.07 * scale))
         return font_size, margin_v
+
+    @staticmethod
+    def _parse_media_timestamp(value: str) -> float:
+        """Parse SRT/VTT timestamps (supports comma or dot ms, with or without hours)."""
+        cleaned = value.strip().replace(",", ".")
+        parts = cleaned.split(":")
+        if len(parts) == 3:
+            hh, mm, sec_part = parts[0], parts[1], parts[2]
+        elif len(parts) == 2:
+            hh, mm, sec_part = "0", parts[0], parts[1]
+        else:
+            raise ValueError(f"Invalid timestamp: {value!r}")
+
+        if "." in sec_part:
+            ss_str, ms_str = sec_part.split(".", 1)
+        else:
+            ss_str, ms_str = sec_part, "0"
+
+        ms_val = int(ms_str.ljust(3, "0")[:3])
+        return int(hh) * 3600 + int(mm) * 60 + int(ss_str) + ms_val / 1000.0
 
     @staticmethod
     def _parse_srt(srt_path: Path) -> list[tuple[float, float, str]]:
         cues: list[tuple[float, float, str]] = []
         content = srt_path.read_text(encoding="utf-8", errors="ignore")
         blocks = re.split(r"\r?\n\r?\n", content.strip())
-
-        def parse_ts(value: str) -> float:
-            value = value.strip().replace(",", ".")
-            hh, mm, rest = value.split(":")
-            ss, ms = rest.split(".")
-            return int(hh) * 3600 + int(mm) * 60 + int(ss) + int(ms.ljust(3, "0")[:3]) / 1000
 
         for block in blocks:
             lines = [line.strip() for line in block.splitlines() if line.strip()]
@@ -124,12 +165,20 @@ class VideoService:
             time_line_index = 1 if re.fullmatch(r"\d+", lines[0]) else 0
             if time_line_index >= len(lines) or "-->" not in lines[time_line_index]:
                 continue
-            start_str, end_str = [
-                part.strip().split(" ")[0] for part in lines[time_line_index].split("-->")
-            ]
+            time_parts = lines[time_line_index].split("-->")
+            if len(time_parts) < 2:
+                continue
+            start_str = time_parts[0].strip().split(" ")[0]
+            end_str = time_parts[1].strip().split(" ")[0]
             text = "\n".join(lines[time_line_index + 1 :]).strip()
             if text:
-                cues.append((parse_ts(start_str), parse_ts(end_str), text))
+                cues.append(
+                    (
+                        VideoService._parse_media_timestamp(start_str),
+                        VideoService._parse_media_timestamp(end_str),
+                        text,
+                    )
+                )
         return cues
 
     @staticmethod
@@ -137,10 +186,11 @@ class VideoService:
         cues: list[tuple[float, float, str]],
         output_path: Path,
         canvas_size: Tuple[int, int],
+        font_scale: float = 1.0,
     ) -> Path:
         """ASS subtitles with PlayRes matching video — avoids giant SRT burn scaling."""
         width, height = canvas_size
-        font_size, margin_v = VideoService._subtitle_style_for_height(height)
+        font_size, margin_v = VideoService._subtitle_style_for_height(height, scale=font_scale)
         lines = [
             "[Script Info]",
             "ScriptType: v4.00+",
@@ -165,15 +215,67 @@ class VideoService:
         return output_path
 
     @staticmethod
+    def _create_karaoke_ass(
+        cues: list[tuple[float, float, str]],
+        output_path: Path,
+        canvas_size: Tuple[int, int],
+        font_scale: float = 1.0,
+    ) -> Path:
+        """TikTok-style: pop-in line + per-word colour highlight (no \\k tags — libass-safe)."""
+        from app.utils.studio_karaoke import expand_cues_to_words, group_words_into_lines
+
+        width, height = canvas_size
+        font_size, margin_v = VideoService._subtitle_style_for_height(height, scale=font_scale * 1.2)
+        word_cues = expand_cues_to_words(cues)
+        lines_grouped = group_words_into_lines(word_cues, max_words=7 if height > width else 6)
+
+        inactive = "&H00B0B0B0"
+        active = "&H0000D7FF"
+        y_pos = height - margin_v
+
+        ass_lines = [
+            "[Script Info]",
+            "ScriptType: v4.00+",
+            f"PlayResX: {width}",
+            f"PlayResY: {height}",
+            "WrapStyle: 2",
+            "ScaledBorderAndShadow: yes",
+            "",
+            "[V4+ Styles]",
+            "Format: Name,Fontname,Fontsize,PrimaryColour,SecondaryColour,OutlineColour,BackColour,Bold,Italic,Underline,StrikeOut,ScaleX,ScaleY,Spacing,Angle,BorderStyle,Outline,Shadow,Alignment,MarginL,MarginR,MarginV,Encoding",
+            f"Style: Karaoke,Arial,{font_size},&H00FFFFFF,&H0000D7FF,&H00101010,&H96000000,-1,0,0,0,100,100,0,0,1,3,1,2,48,48,{margin_v},1",
+            "",
+            "[Events]",
+            "Format: Layer,Start,End,Style,Name,MarginL,MarginR,MarginV,Effect,Text",
+        ]
+
+        for line_idx, line_words in enumerate(lines_grouped):
+            if not line_words:
+                continue
+            line_y = y_pos - line_idx * int(font_size * 1.35)
+            for active_index, (w_start, w_end, _word) in enumerate(line_words):
+                parts: list[str] = []
+                for j, (_, __, w) in enumerate(line_words):
+                    colour = active if j == active_index else inactive
+                    safe = VideoService._escape_ass_text(w)
+                    parts.append(f"{{\\1c{colour}&}}{safe}")
+                line_text = " ".join(parts)
+                pos = f"{{\\an2\\pos({width // 2},{line_y})}}"
+                fade = "{\\fad(60,100)}" if active_index == 0 else ""
+                ass_lines.append(
+                    f"Dialogue: 0,{VideoService._format_ass_time(w_start)},"
+                    f"{VideoService._format_ass_time(w_end)},Karaoke,,0,0,0,,"
+                    f"{pos}{fade}{line_text}"
+                )
+
+        output_path.write_text("\n".join(ass_lines), encoding="utf-8")
+        return output_path
+
+    @staticmethod
     def _parse_vtt(vtt_path: Path) -> list[tuple[float, float, str]]:
         cues: list[tuple[float, float, str]] = []
         content = vtt_path.read_text(encoding="utf-8", errors="ignore")
         blocks = re.split(r"\r?\n\r?\n", content.strip())
-
-        def parse_ts(value: str) -> float:
-            hh, mm, rest = value.split(":")
-            ss, ms = rest.split(".")
-            return int(hh) * 3600 + int(mm) * 60 + int(ss) + int(ms) / 1000
 
         for block in blocks:
             lines = [line.strip() for line in block.splitlines() if line.strip()]
@@ -182,10 +284,20 @@ class VideoService:
             time_line_index = 0 if "-->" in lines[0] else 1
             if time_line_index >= len(lines) or "-->" not in lines[time_line_index]:
                 continue
-            start_str, end_str = [part.strip().split(" ")[0] for part in lines[time_line_index].split("-->")]
-            text = " ".join(lines[time_line_index + 1:]).strip()
+            time_parts = lines[time_line_index].split("-->")
+            if len(time_parts) < 2:
+                continue
+            start_str = time_parts[0].strip().split(" ")[0]
+            end_str = time_parts[1].strip().split(" ")[0]
+            text = " ".join(lines[time_line_index + 1 :]).strip()
             if text:
-                cues.append((parse_ts(start_str), parse_ts(end_str), text))
+                cues.append(
+                    (
+                        VideoService._parse_media_timestamp(start_str),
+                        VideoService._parse_media_timestamp(end_str),
+                        text,
+                    )
+                )
         return cues
 
     @staticmethod
@@ -427,7 +539,7 @@ class VideoService:
                     "ffmpeg", "-y", "-i", str(video_path), "-i", str(audio_path),
                     "-vf", filter_str,
                     "-af", "apad",
-                    "-c:v", "libx264", "-preset", "fast", "-crf", "23",
+                    *video_encoder_args(crf=23),
                     "-c:a", "aac", "-b:a", "192k",
                     "-map", "0:v:0", "-map", "1:a:0",
                     "-shortest", str(output_path)
@@ -474,7 +586,12 @@ class VideoService:
             subtitle_filter = ""
             if srt_path and srt_path.exists():
                 ass_path = output_path.with_suffix(".ass")
-                VideoService._create_pop_ass(srt_path, ass_path, (width, height))
+                cues = (
+                    VideoService._parse_srt(srt_path)
+                    if srt_path.suffix.lower() == ".srt"
+                    else VideoService._parse_vtt(srt_path)
+                )
+                VideoService._create_burn_ass(cues, ass_path, (width, height), font_scale=1.4)
                 subtitle_filter = f",ass='{VideoService._ffmpeg_subtitle_path(ass_path)}'"
 
             motion_filter = (
@@ -494,7 +611,7 @@ class VideoService:
                 "-loop", "1", "-i", str(image_path),
                 "-i", str(audio_path),
                 "-vf", motion_filter,
-                "-c:v", "libx264", "-preset", "fast", "-crf", "23",
+                *video_encoder_args(crf=23),
                 "-c:a", "aac", "-b:a", "192k",
                 "-shortest", "-pix_fmt", "yuv420p",
                 str(output_path)
@@ -506,6 +623,288 @@ class VideoService:
             )
         except Exception as e:
             logger.error(f"Studio generation error: {e}")
+            return False
+
+    @staticmethod
+    def _scene_motion_filter(width: int, height: int, duration: float, scene_index: int) -> str:
+        """Ken Burns / pan on each scene PNG so HTML cards are not frozen stills."""
+        frames = max(int(duration * 30), 90)
+        scale_crop = (
+            f"scale={width}:{height}:force_original_aspect_ratio=increase,"
+            f"crop={width}:{height},"
+        )
+        mode = scene_index % 4
+        if mode == 0:
+            z = (
+                f"zoompan=z='min(1+0.00042*on,1.12)':"
+                f"x='iw/2-(iw/zoom/2)':y='ih/2-(ih/zoom/2)'"
+            )
+        elif mode == 1:
+            z = (
+                f"zoompan=z='max(1.12-0.00042*on,1.02)':"
+                f"x='iw/2-(iw/zoom/2)':y='ih/2-(ih/zoom/2)'"
+            )
+        elif mode == 2:
+            z = (
+                f"zoompan=z='1.08':"
+                f"x='max(0,(iw-iw/zoom)*(on/{frames}))':y='ih/2-(ih/zoom/2)'"
+            )
+        else:
+            z = (
+                f"zoompan=z='1.08':"
+                f"x='max(0,(iw-iw/zoom)*(1-on/{frames}))':y='ih/2-(ih/zoom/2)'"
+            )
+        return f"{scale_crop}{z}:d={frames}:s={width}x{height}:fps=30,format=yuv420p"
+
+    @staticmethod
+    def studio_scenes_to_video(
+        scene_pngs: list[tuple[Path, float]],
+        audio_path: Path,
+        output_path: Path,
+        srt_path: Optional[Path] = None,
+        aspect_ratio: str = "9:16",
+        progress_callback: Optional[Callable[[float], None]] = None,
+        fade_seconds: float = 0.45,
+        karaoke_subs: bool = False,
+        burn_subtitles: bool = False,
+    ) -> bool:
+        """Assemble HTML scene slides with Ken Burns motion + crossfades."""
+        if not scene_pngs:
+            return False
+
+        try:
+            width, height = VideoService._canvas_size(aspect_ratio)
+            temp_dir = settings.TEMP_DIR / f"studio_scenes_{output_path.stem}"
+            temp_dir.mkdir(parents=True, exist_ok=True)
+            segment_paths: list[Path] = []
+
+            fade = max(0.35, min(fade_seconds, 0.85))
+            for index, (png_path, duration) in enumerate(scene_pngs):
+                seg_out = temp_dir / f"scene_{index:03d}.mp4"
+                dur = max(duration, 0.8)
+                if len(scene_pngs) > 1:
+                    dur += fade * 0.5
+                motion_filter = VideoService._scene_motion_filter(width, height, dur, index)
+                command = [
+                    "ffmpeg",
+                    "-y",
+                    "-loop",
+                    "1",
+                    "-i",
+                    str(png_path),
+                    "-t",
+                    f"{dur:.3f}",
+                    "-vf",
+                    motion_filter,
+                    *video_encoder_args(crf=22),
+                    "-an",
+                    str(seg_out),
+                ]
+                subprocess.run(command, check=True, stdout=subprocess.DEVNULL, stderr=subprocess.PIPE)
+                if seg_out.exists():
+                    segment_paths.append(seg_out)
+
+            if not segment_paths:
+                return False
+
+            if len(segment_paths) == 1:
+                video_only = segment_paths[0]
+            else:
+                video_only = temp_dir / "xfade_merged.mp4"
+                transitions = [
+                    STUDIO_XFADE_TRANSITIONS[i % len(STUDIO_XFADE_TRANSITIONS)]
+                    for i in range(len(segment_paths) - 1)
+                ]
+                VideoService._xfade_chain(
+                    segment_paths, video_only, fade_seconds=fade, transitions=transitions
+                )
+
+            audio_duration = max(VideoService.get_duration(audio_path), 0.1)
+            video_duration = VideoService.get_duration(video_only)
+            vf_parts: list[str] = []
+            if video_duration + 0.05 < audio_duration:
+                pad = audio_duration - video_duration
+                vf_parts.append(f"tpad=stop_mode=clone:stop_duration={pad:.3f}")
+
+            if burn_subtitles and srt_path and srt_path.exists():
+                ass_path = output_path.with_suffix(".ass")
+                cues = (
+                    VideoService._parse_srt(srt_path)
+                    if srt_path.suffix.lower() == ".srt"
+                    else VideoService._parse_vtt(srt_path)
+                )
+                if karaoke_subs:
+                    VideoService._create_karaoke_ass(cues, ass_path, (width, height), font_scale=1.35)
+                else:
+                    VideoService._create_burn_ass(cues, ass_path, (width, height), font_scale=1.45)
+                vf_parts.append(f"ass='{VideoService._ffmpeg_subtitle_path(ass_path)}'")
+
+            command = [
+                "ffmpeg",
+                "-y",
+                "-i",
+                str(video_only),
+                "-i",
+                str(audio_path),
+            ]
+            if vf_parts:
+                command.extend(["-vf", ",".join(vf_parts), *video_encoder_args(crf=20)])
+            else:
+                command.extend(["-c:v", "copy"])
+            command.extend(
+                [
+                    "-c:a",
+                    "aac",
+                    "-b:a",
+                    "192k",
+                    "-map",
+                    "0:v:0",
+                    "-map",
+                    "1:a:0",
+                    "-t",
+                    f"{audio_duration:.3f}",
+                    str(output_path),
+                ]
+            )
+            return VideoService._run_ffmpeg_with_progress(
+                command,
+                duration=VideoService.get_duration(audio_path),
+                progress_callback=progress_callback,
+            )
+        except Exception as e:
+            logger.error("Studio HTML scene assembly failed: %s", e)
+            return False
+
+    @staticmethod
+    def _xfade_chain(
+        segment_paths: list[Path],
+        output_path: Path,
+        fade_seconds: float,
+        transitions: Optional[list[str]] = None,
+    ) -> None:
+        """Chain xfade transitions across scene segments (Pixelle-style cuts)."""
+        if len(segment_paths) == 1:
+            shutil.copy2(segment_paths[0], output_path)
+            return
+
+        current = segment_paths[0]
+        fade = max(0.35, min(fade_seconds, 1.0))
+        transition_list = transitions or ["fade"] * (len(segment_paths) - 1)
+        for index, nxt in enumerate(segment_paths[1:], start=1):
+            merged = output_path.parent / f"xfade_{index}.mp4"
+            dur_current = VideoService.get_duration(current)
+            offset = max(dur_current - fade, 0.15)
+            transition = transition_list[index - 1] if index - 1 < len(transition_list) else "fade"
+            if transition not in STUDIO_XFADE_TRANSITIONS:
+                transition = "fade"
+            filter_complex = (
+                f"[0:v][1:v]xfade=transition={transition}:duration={fade:.3f}:offset={offset:.3f}[v]"
+            )
+            subprocess.run(
+                [
+                    "ffmpeg",
+                    "-y",
+                    "-i",
+                    str(current),
+                    "-i",
+                    str(nxt),
+                    "-filter_complex",
+                    filter_complex,
+                    "-map",
+                    "[v]",
+                    *video_encoder_args(crf=22),
+                    str(merged),
+                ],
+                check=True,
+                stdout=subprocess.DEVNULL,
+                stderr=subprocess.PIPE,
+            )
+            current = merged
+        shutil.copy2(current, output_path)
+
+    @staticmethod
+    def apply_studio_branding(
+        video_path: Path,
+        output_path: Path,
+        aspect_ratio: str,
+        branding,
+    ) -> bool:
+        """Composite optional header/footer text or logo strips onto finished video."""
+        from app.utils.studio_overlay import branding_active, render_branding_png
+
+        if not branding_active(branding):
+            shutil.copy2(video_path, output_path)
+            return True
+
+        width, height = VideoService._canvas_size(aspect_ratio)
+        band_h = max(int(height * 0.11), 88)
+        temp_dir = settings.TEMP_DIR / f"brand_{video_path.stem}"
+        temp_dir.mkdir(parents=True, exist_ok=True)
+
+        inputs = ["-i", str(video_path)]
+        filter_parts: list[str] = []
+        stream_label = "0:v"
+        input_index = 1
+
+        if branding.header.enabled:
+            header_png = temp_dir / "header.png"
+            render_branding_png(
+                width=width,
+                height=band_h,
+                band=branding.header,
+                band_height=band_h,
+                position="header",
+            ).save(header_png)
+            inputs.extend(["-i", str(header_png)])
+            out_label = f"v{input_index}"
+            filter_parts.append(f"[{stream_label}][{input_index}:v]overlay=0:0:format=auto[{out_label}]")
+            stream_label = out_label
+            input_index += 1
+
+        if branding.footer.enabled:
+            footer_png = temp_dir / "footer.png"
+            render_branding_png(
+                width=width,
+                height=band_h,
+                band=branding.footer,
+                band_height=band_h,
+                position="footer",
+            ).save(footer_png)
+            inputs.extend(["-i", str(footer_png)])
+            y = height - band_h
+            out_label = f"v{input_index}"
+            filter_parts.append(
+                f"[{stream_label}][{input_index}:v]overlay=0:{y}:format=auto[{out_label}]"
+            )
+            stream_label = out_label
+            input_index += 1
+
+        if not filter_parts:
+            shutil.copy2(video_path, output_path)
+            return True
+
+        filter_complex = ";".join(filter_parts)
+        command = [
+            "ffmpeg",
+            "-y",
+            *inputs,
+            "-filter_complex",
+            filter_complex,
+            "-map",
+            f"[{stream_label}]",
+            "-map",
+            "0:a?",
+            *video_encoder_args(crf=20),
+            "-c:a",
+            "copy",
+            str(output_path),
+        ]
+        try:
+            subprocess.run(command, check=True, stdout=subprocess.DEVNULL, stderr=subprocess.PIPE)
+            return output_path.exists()
+        except subprocess.CalledProcessError as exc:
+            logger.error("Studio branding overlay failed: %s", exc.stderr.decode(errors="replace")[:500])
+            shutil.copy2(video_path, output_path)
             return False
 
     @staticmethod

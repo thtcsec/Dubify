@@ -1,5 +1,7 @@
 import logging
 import asyncio
+import shutil
+import subprocess
 import tempfile
 import threading
 import wave
@@ -15,6 +17,16 @@ from app.services.text_normalizer import normalize_for_tts
 from app.utils.script_split import split_spoken_lines
 
 logger = logging.getLogger(__name__)
+
+
+def _studio_vtt_ts(seconds: float) -> str:
+    total_ms = int(max(seconds, 0) * 1000)
+    h = total_ms // 3_600_000
+    m = (total_ms % 3_600_000) // 60_000
+    s = (total_ms % 60_000) // 1000
+    ms = total_ms % 1000
+    return f"{h:02d}:{m:02d}:{s:02d}.{ms:03d}"
+
 
 # Default Edge-TTS voices per target language (dubbing uses these when no voice_id is sent).
 DEFAULT_EDGE_VOICES: dict[str, str] = {
@@ -323,8 +335,9 @@ class TTSService:
             logger.warning("Empty text passed to TTS, skipping.")
             return False
         
-        # Normalize text for TTS (numbers→words, dates, acronyms, loanwords)
+        text = self._sanitize_for_edge_tts(text)
         text = normalize_for_tts(text, self.target_lang)
+        text = self._sanitize_for_edge_tts(text)
             
         if self.provider == "f5tts" and self.f5_service.is_available() and ref_audio_path and ref_text:
             if await self.f5_service.clone_voice(ref_audio_path, ref_text, text, output_path):
@@ -360,6 +373,131 @@ class TTSService:
 
         return False
 
+    async def generate_studio_audio_with_subtitles(
+        self, text: str, target_lang: str, job_id: str
+    ) -> Tuple[Path, Path]:
+        """Full-length studio TTS: chunk long scripts instead of truncating to 280 chars."""
+        from app.utils.script_split import split_spoken_lines
+
+        text = self._strip_studio_section_markers(text)
+        text = self._sanitize_for_edge_tts(text)
+        text = normalize_for_tts(text, target_lang, transliterate=False)
+        text = self._sanitize_for_edge_tts(text)
+        lines = split_spoken_lines(text, max_chars=100)
+        if not lines:
+            lines = [text.strip()] if text.strip() else [""]
+
+        chunks: list[str] = []
+        buf: list[str] = []
+        buf_len = 0
+        max_chunk = 140
+        for line in lines:
+            extra = len(line) + (1 if buf else 0)
+            if buf and buf_len + extra > max_chunk:
+                chunks.append(" ".join(buf))
+                buf = [line]
+                buf_len = len(line)
+            else:
+                buf.append(line)
+                buf_len += extra
+        if buf:
+            chunks.append(" ".join(buf))
+
+        temp_dir = settings.TEMP_DIR / f"{job_id}_studio_tts"
+        temp_dir.mkdir(parents=True, exist_ok=True)
+        chunk_paths: list[Path] = []
+        vtt_lines = ["WEBVTT", ""]
+        timeline = 0.0
+
+        for index, chunk in enumerate(chunks):
+            if not chunk.strip():
+                continue
+            chunk_audio = temp_dir / f"chunk_{index:03d}.mp3"
+            chunk_vtt = temp_dir / f"chunk_{index:03d}.vtt"
+            ok = await self._edge_tts_subprocess(
+                chunk, self.voice, chunk_audio, chunk_vtt, max_chars=None
+            )
+            if not ok:
+                await asyncio.sleep(0.5)
+                ok = await self._edge_tts_subprocess(
+                    chunk, self.voice, chunk_audio, chunk_vtt, max_chars=120, retries=3
+                )
+            if not ok:
+                shorter = self._edge_safe_text(chunk, max_chars=90)
+                if shorter and shorter != chunk:
+                    ok = await self._edge_tts_subprocess(
+                        shorter, self.voice, chunk_audio, chunk_vtt, max_chars=None, retries=2
+                    )
+            if not ok:
+                ok = await self._generate_local_audio(chunk, chunk_audio.with_suffix(".wav"))
+                if ok:
+                    chunk_audio = chunk_audio.with_suffix(".wav")
+                    self._write_basic_vtt(chunk, chunk_audio, chunk_vtt)
+            if not ok or not chunk_audio.exists():
+                logger.warning("Studio TTS chunk %d failed, skipping", index)
+                continue
+
+            if index + 1 < len(chunks):
+                await asyncio.sleep(0.35)
+
+            dur = max(VideoService.get_duration(chunk_audio), 0.05)
+            chunk_paths.append(chunk_audio)
+            vtt_lines.append(str(len(chunk_paths)))
+            vtt_lines.append(f"{_studio_vtt_ts(timeline)} --> {_studio_vtt_ts(timeline + dur)}")
+            vtt_lines.append(chunk)
+            vtt_lines.append("")
+            timeline += dur
+
+        if not chunk_paths:
+            raise RuntimeError("Studio TTS produced no audio chunks.")
+
+        final_audio = settings.TEMP_DIR / f"{job_id}_tts.mp3"
+        if len(chunk_paths) == 1:
+            src = chunk_paths[0]
+            if src.suffix.lower() == ".wav":
+                subprocess.run(
+                    ["ffmpeg", "-y", "-i", str(src), "-c:a", "libmp3lame", "-q:a", "2", str(final_audio)],
+                    check=True,
+                    stdout=subprocess.DEVNULL,
+                    stderr=subprocess.PIPE,
+                )
+            else:
+                shutil.copy2(src, final_audio)
+        else:
+            list_file = temp_dir / "chunks.txt"
+            with open(list_file, "w", encoding="utf-8") as f:
+                for p in chunk_paths:
+                    f.write(f"file '{p.resolve().as_posix()}'\n")
+            subprocess.run(
+                [
+                    "ffmpeg",
+                    "-y",
+                    "-f",
+                    "concat",
+                    "-safe",
+                    "0",
+                    "-i",
+                    str(list_file),
+                    "-c:a",
+                    "libmp3lame",
+                    "-q:a",
+                    "2",
+                    str(final_audio),
+                ],
+                check=True,
+                stdout=subprocess.DEVNULL,
+                stderr=subprocess.PIPE,
+            )
+
+        final_vtt = settings.TEMP_DIR / f"{job_id}_tts.vtt"
+        final_vtt.write_text("\n".join(vtt_lines), encoding="utf-8")
+        logger.info(
+            "Studio TTS complete: %d chunks, %.1fs total",
+            len(chunk_paths),
+            VideoService.get_duration(final_audio),
+        )
+        return final_audio, final_vtt
+
     async def generate_audio_with_subtitles(self, text: str, target_lang: str, job_id: str) -> Tuple[Path, Path]:
         """Generate audio and subtitles using the active TTS backend."""
         # Normalize text for TTS before generating audio
@@ -394,13 +532,39 @@ class TTSService:
             return fallback_audio, fallback_srt
 
     @staticmethod
-    def _edge_safe_text(text: str, max_chars: int = 280) -> str:
-        cleaned = re.sub(r"\s+", " ", (text or "").strip())
+    def _strip_studio_section_markers(text: str) -> str:
+        """Remove [Scene Title] lines from spoken TTS (kept for HTML scene parsing only)."""
+        without_headers = re.sub(r"^\s*\[[^\]]+\]\s*$", "", text or "", flags=re.MULTILINE)
+        return re.sub(r"\n{3,}", "\n\n", without_headers).strip()
+
+    @staticmethod
+    def _sanitize_for_edge_tts(text: str) -> str:
+        """Edge-TTS returns NoAudioReceived for [] or lone '[' — common with [Section] markers."""
+        cleaned = (text or "").replace("\r\n", "\n")
+        cleaned = re.sub(r"https?://\S+", " ", cleaned)
+        cleaned = re.sub(r"\[([^\]]+)\]\([^)]+\)", r"\1", cleaned)  # markdown links
+        cleaned = re.sub(r"!\[[^\]]*\]\([^)]+\)", " ", cleaned)  # markdown images
+        cleaned = re.sub(r"\*\*([^*]+)\*\*", r"\1", cleaned)
+        cleaned = re.sub(r"\*([^*]+)\*", r"\1", cleaned)
+        cleaned = re.sub(r"\[\s*\]", " ", cleaned)
+        cleaned = re.sub(r"\[([^\]]{1,200})\]", r"\1", cleaned)
+        cleaned = re.sub(r"(?<!\w)\[(?!\w)", " ", cleaned)
+        cleaned = re.sub(r"(?<!\w)\](?!\w)", " ", cleaned)
+        cleaned = re.sub(r"[#_|`~<>{}]", " ", cleaned)
+        cleaned = re.sub(r"[\u2018\u2019\u201a\u201b\u2032`]", " ", cleaned)
+        cleaned = re.sub(r'[\u201c\u201d"]', " ", cleaned)
+        cleaned = re.sub(r"\s+", " ", cleaned).strip()
+        if cleaned in {"[]", "[", "]"}:
+            return ""
+        return cleaned
+
+    @staticmethod
+    def _edge_safe_text(text: str, max_chars: Optional[int] = 280) -> str:
+        cleaned = TTSService._sanitize_for_edge_tts(text)
         if not cleaned:
             return ""
-        if len(cleaned) <= max_chars:
+        if max_chars is None or len(cleaned) <= max_chars:
             return cleaned
-        # Edge-TTS often returns NoAudioReceived on very long single requests.
         head = cleaned[: max_chars - 1].rsplit(" ", 1)[0]
         return head or cleaned[:max_chars]
 
@@ -410,54 +574,125 @@ class TTSService:
         voice: str,
         audio_path: Path,
         subtitle_path: Optional[Path] = None,
+        *,
+        max_chars: Optional[int] = 280,
+        retries: int = 3,
+        log_failures: bool = True,
     ) -> bool:
         """Run edge-tts via CLI subprocess to avoid uvicorn event loop conflicts on Windows."""
         import sys
         import tempfile
 
-        text = TTSService._edge_safe_text(text)
-        if not text:
+        text = self._edge_safe_text(text, max_chars=max_chars)
+        if not text or not re.search(r"[\w\u00C0-\u1FFF]", text, re.UNICODE):
+            logger.warning("Edge-TTS skipped: no speakable text after sanitize.")
             return False
 
-        # Write text to a temp file to handle Unicode and long texts safely
-        with tempfile.NamedTemporaryFile("w", suffix=".txt", delete=False, encoding="utf-8") as tf:
-            tf.write(text)
-            text_file = Path(tf.name)
+        audio_path.parent.mkdir(parents=True, exist_ok=True)
+        voices_to_try = [voice]
+        fallback = self.default_voice_for_lang(self.target_lang)
+        if fallback not in voices_to_try:
+            voices_to_try.append(fallback)
 
-        try:
-            args = [
-                sys.executable, "-m", "edge_tts",
-                "--voice", voice,
-                "--file", str(text_file),
-                "--write-media", str(audio_path),
-            ]
-            if subtitle_path:
-                args.extend(["--write-subtitles", str(subtitle_path)])
+        last_err = ""
+        for attempt in range(retries):
+            for voice_name in voices_to_try:
+                with tempfile.NamedTemporaryFile(
+                    "w", suffix=".txt", delete=False, encoding="utf-8"
+                ) as tf:
+                    tf.write(text)
+                    text_file = Path(tf.name)
 
-            proc = await asyncio.create_subprocess_exec(
-                *args,
-                stdout=asyncio.subprocess.PIPE,
-                stderr=asyncio.subprocess.PIPE,
-            )
-            try:
-                stdout, stderr = await asyncio.wait_for(proc.communicate(), timeout=60)
-            except asyncio.TimeoutError:
-                proc.kill()
-                await proc.communicate()
-                logger.error("Edge-TTS CLI timed out after 60s")
-                raise RuntimeError("Edge-TTS timed out")
+                try:
+                    args = [
+                        sys.executable,
+                        "-m",
+                        "edge_tts",
+                        "--voice",
+                        voice_name,
+                        "--file",
+                        str(text_file),
+                        "--write-media",
+                        str(audio_path),
+                    ]
+                    if subtitle_path:
+                        args.extend(["--write-subtitles", str(subtitle_path)])
 
-            if proc.returncode != 0:
-                err = stderr.decode(errors="replace").strip()
-                logger.error(f"Edge-TTS CLI failed: {err}")
-                raise RuntimeError(f"Edge-TTS CLI error: {err}")
+                    proc = await asyncio.create_subprocess_exec(
+                        *args,
+                        stdout=asyncio.subprocess.PIPE,
+                        stderr=asyncio.subprocess.PIPE,
+                    )
+                    timeout = 180 if max_chars is None else 90
+                    try:
+                        _stdout, stderr = await asyncio.wait_for(proc.communicate(), timeout=timeout)
+                    except asyncio.TimeoutError:
+                        proc.kill()
+                        await proc.communicate()
+                        last_err = "timed out"
+                        continue
 
-            if not audio_path.exists() or audio_path.stat().st_size == 0:
-                return False
+                    if proc.returncode != 0:
+                        last_err = stderr.decode(errors="replace").strip() or f"exit {proc.returncode}"
+                        if "NoAudioReceived" in last_err and len(text) > 80:
+                            half = len(text) // 2
+                            split_at = text.rfind(" ", 0, half)
+                            if split_at > 20:
+                                part_a = text[:split_at].strip()
+                                part_b = text[split_at:].strip()
+                                temp_a = audio_path.with_suffix(".part_a.mp3")
+                                temp_b = audio_path.with_suffix(".part_b.mp3")
+                                if await self._edge_tts_subprocess(
+                                    part_a, voice_name, temp_a, max_chars=max_chars, retries=1
+                                ) and await self._edge_tts_subprocess(
+                                    part_b, voice_name, temp_b, max_chars=max_chars, retries=1
+                                ):
+                                    list_file = audio_path.with_suffix(".concat.txt")
+                                    list_file.write_text(
+                                        "\n".join(
+                                            f"file '{p.resolve().as_posix()}'"
+                                            for p in (temp_a, temp_b)
+                                        ),
+                                        encoding="utf-8",
+                                    )
+                                    subprocess.run(
+                                        [
+                                            "ffmpeg",
+                                            "-y",
+                                            "-f",
+                                            "concat",
+                                            "-safe",
+                                            "0",
+                                            "-i",
+                                            str(list_file),
+                                            "-c:a",
+                                            "libmp3lame",
+                                            "-q:a",
+                                            "2",
+                                            str(audio_path),
+                                        ],
+                                        check=True,
+                                        stdout=subprocess.DEVNULL,
+                                        stderr=subprocess.PIPE,
+                                    )
+                                    temp_a.unlink(missing_ok=True)
+                                    temp_b.unlink(missing_ok=True)
+                                    list_file.unlink(missing_ok=True)
+                                    if audio_path.exists() and audio_path.stat().st_size > 0:
+                                        return True
+                        continue
 
-            return True
-        finally:
-            text_file.unlink(missing_ok=True)
+                    if audio_path.exists() and audio_path.stat().st_size > 0:
+                        return True
+                finally:
+                    text_file.unlink(missing_ok=True)
+
+            if attempt < retries - 1:
+                await asyncio.sleep(1.5 * (attempt + 1))
+
+        if log_failures:
+            logger.error("Edge-TTS failed after %d attempts: %s", retries, last_err[:400])
+        return False
 
     async def process_segments(
         self,

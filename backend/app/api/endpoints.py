@@ -15,7 +15,7 @@ MAX_IMAGE_SIZE = 20 * 1024 * 1024  # 20 MB
 MAX_TEXT_LENGTH = 50_000  # characters
 MAX_UPLOAD_SIZE = 2 * 1024 * 1024 * 1024  # 2 GB
 ALLOWED_ASPECT_RATIOS = {"16:9", "9:16", "4:3", "3:4", "1:1"}
-ALLOWED_VIDEO_ENGINES = {"local", "veo3", "kling", "minimax", "seedance"}
+ALLOWED_VIDEO_ENGINES = {"series", "local", "single", "veo3", "kling", "minimax", "seedance"}
 
 from app.core.auth import require_admin_key
 from app.core.config import settings
@@ -24,6 +24,8 @@ from app.core.logging import mask_api_key
 from app.core.worker import worker
 from app.services.url_service import URLService, URLServiceError
 from app.services.tts_service import TTSService
+from app.api.voice_catalog import voices_payload
+from app.core.gpu import gpu_info_dict
 from app.services.editor_service import EditorService
 from app.utils.artifacts import remove_job_artifacts, resolve_artifact_paths
 from app.utils.uploads import save_upload_limited
@@ -90,11 +92,18 @@ async def create_studio_video(
     duration_seconds: int = Form(0),
     aspect_ratio: str = Form("16:9"),
     use_raw_script: bool = Form(True),
+    studio_visual_mode: str = Form("html_scenes"),
+    studio_template: str = Form("tiktok_news"),
+    header_enabled: bool = Form(False),
+    header_text: str = Form(""),
+    header_opacity: float = Form(0.85),
+    header_image: Optional[UploadFile] = File(None),
+    footer_enabled: bool = Form(False),
+    footer_text: str = Form(""),
+    footer_opacity: float = Form(0.85),
+    footer_image: Optional[UploadFile] = File(None),
 ):
-    """Create a studio video from image + script (verbatim or LLM rewrite)."""
-    if image is None and not image_url:
-        raise HTTPException(status_code=400, detail="Please upload an image or provide an image URL.")
-
+    """Create a studio video from script; background image is optional (gradient if omitted)."""
     # Input validation
     if len(text) > MAX_TEXT_LENGTH:
         raise HTTPException(status_code=400, detail=f"Text too long. Maximum {MAX_TEXT_LENGTH} characters.")
@@ -106,23 +115,48 @@ async def create_studio_video(
     job_id = f"studio_{os.urandom(4).hex()}"
     job_manager.register_job(job_id, filename="studio_project", job_type=JobType.STUDIO, text=text, target_lang=target_lang)
 
+    image_path: str | None = None
     if image is not None:
         image_filename = image.filename or "studio_image"
-        image_path = settings.INPUT_DIR / f"{job_id}_{image_filename}"
-        with open(image_path, "wb") as buffer:
+        saved = settings.INPUT_DIR / f"{job_id}_{image_filename}"
+        with open(saved, "wb") as buffer:
             shutil.copyfileobj(image.file, buffer)
-    else:
-        image_path = _download_image_to_input(job_id, image_url or "")
+        image_path = str(saved)
+    elif image_url and image_url.strip():
+        image_path = str(_download_image_to_input(job_id, image_url.strip()))
+
+    header_image_path: str | None = None
+    footer_image_path: str | None = None
+    if header_image is not None and header_image.filename:
+        saved = settings.INPUT_DIR / f"{job_id}_header_{Path(header_image.filename).name}"
+        with open(saved, "wb") as buffer:
+            shutil.copyfileobj(header_image.file, buffer)
+        header_image_path = str(saved)
+    if footer_image is not None and footer_image.filename:
+        saved = settings.INPUT_DIR / f"{job_id}_footer_{Path(footer_image.filename).name}"
+        with open(saved, "wb") as buffer:
+            shutil.copyfileobj(footer_image.file, buffer)
+        footer_image_path = str(saved)
 
     worker.add_job(job_id, {
         "type": JobType.STUDIO,
-        "image_path": str(image_path),
+        "image_path": image_path,
         "text": text,
         "target_lang": target_lang,
         "voice_id": voice_id,
         "duration_seconds": max(0, int(duration_seconds)),
         "aspect_ratio": aspect_ratio,
         "use_raw_script": use_raw_script,
+        "studio_visual_mode": studio_visual_mode,
+        "studio_template": studio_template,
+        "header_enabled": header_enabled,
+        "header_text": header_text.strip(),
+        "header_opacity": header_opacity,
+        "header_image_path": header_image_path,
+        "footer_enabled": footer_enabled,
+        "footer_text": footer_text.strip(),
+        "footer_opacity": footer_opacity,
+        "footer_image_path": footer_image_path,
     })
 
     return {"job_id": job_id}
@@ -131,51 +165,46 @@ async def create_studio_video(
 @router.post("/shorts")
 async def create_shorts_video(
     background_tasks: BackgroundTasks,
-    prompt: Optional[str] = Form(None),
-    script: Optional[str] = Form(None),
+    video_url: Optional[str] = Form(None),
+    file: Optional[UploadFile] = File(None),
     target_lang: str = Form("vi"),
     voice_id: str = Form("vi-VN-HoaiMyNeural"),
-    duration_seconds: int = Form(0),
-    aspect_ratio: str = Form("9:16"),
-    video_engine: str = Form("local"),
+    max_part_duration: int = Form(60),
+    vertical_crop: bool = Form(True),
 ):
-    """Create a caption-first short video from a prompt or script."""
-    cleaned_prompt = (prompt or "").strip()
-    cleaned_script = (script or "").strip()
-    if not cleaned_prompt and not cleaned_script:
-        raise HTTPException(status_code=400, detail="Please provide a prompt or a script.")
-
-    if video_engine not in ALLOWED_VIDEO_ENGINES:
-        raise HTTPException(status_code=400, detail=f"Unsupported video engine: {video_engine}")
-    if aspect_ratio not in ALLOWED_ASPECT_RATIOS:
-        raise HTTPException(status_code=400, detail=f"Invalid aspect ratio. Allowed: {', '.join(ALLOWED_ASPECT_RATIOS)}")
-    if duration_seconds < 0 or duration_seconds > 600:
-        raise HTTPException(status_code=400, detail="duration_seconds must be between 0 and 600.")
-    if len(cleaned_prompt) > MAX_TEXT_LENGTH:
-        raise HTTPException(status_code=400, detail=f"Prompt too long. Maximum {MAX_TEXT_LENGTH} characters.")
-    if len(cleaned_script) > MAX_TEXT_LENGTH:
-        raise HTTPException(status_code=400, detail=f"Script too long. Maximum {MAX_TEXT_LENGTH} characters.")
+    """Long video (URL or file) → transcribe → dub → auto-cut Part 1, Part 2, … for Shorts/TikTok."""
+    cleaned_url = (video_url or "").strip()
+    if not cleaned_url and (file is None or not file.filename):
+        raise HTTPException(status_code=400, detail="Provide a video URL or upload a file.")
 
     job_id = f"shorts_{os.urandom(4).hex()}"
+    label = cleaned_url or (file.filename if file else "upload")
     job_manager.register_job(
         job_id,
-        filename="shorts_project",
+        filename=label,
         job_type=JobType.SHORTS,
-        prompt=cleaned_prompt,
+        url=cleaned_url or None,
         target_lang=target_lang,
-        video_engine=video_engine,
     )
 
-    worker.add_job(job_id, {
-        "type": JobType.SHORTS,
-        "prompt": cleaned_prompt,
-        "script": cleaned_script,
-        "target_lang": target_lang,
-        "voice_id": voice_id,
-        "duration_seconds": max(0, int(duration_seconds)),
-        "aspect_ratio": aspect_ratio,
-        "video_engine": video_engine,
-    })
+    video_path: str | None = None
+    if file is not None and file.filename:
+        saved = settings.INPUT_DIR / f"{job_id}_{Path(file.filename).name}"
+        await save_upload_limited(file, saved, MAX_UPLOAD_SIZE)
+        video_path = str(saved)
+
+    worker.add_job(
+        job_id,
+        {
+            "type": JobType.SHORTS,
+            "video_url": cleaned_url,
+            "video_path": video_path,
+            "target_lang": target_lang,
+            "voice_id": voice_id,
+            "max_part_duration": max(15, min(int(max_part_duration), 180)),
+            "vertical_crop": vertical_crop,
+        },
+    )
 
     return {"job_id": job_id}
 
@@ -302,6 +331,80 @@ async def get_job_artifacts(job_id: str):
     }
 
 
+@router.get("/jobs/{job_id}/plan-clips")
+async def plan_job_clips(
+    job_id: str,
+    platform: str = "tiktok",
+    mode: str = "scene",
+    max_duration: float | None = None,
+):
+    """Preview how a completed dub would be split for Shorts/TikTok."""
+    job = job_manager.get_job(job_id)
+    if not job:
+        raise HTTPException(status_code=404, detail="Job not found")
+    if job.get("status") != JobStatus.COMPLETED:
+        raise HTTPException(status_code=400, detail="Job must be completed.")
+
+    from app.services.clip_service import ClipService
+
+    try:
+        service = ClipService()
+        return service.plan_from_job(
+            job_id,
+            job,
+            platform=platform if platform in {"tiktok", "youtube_shorts", "instagram_reels", "custom"} else "tiktok",
+            mode=mode if mode in {"scene", "fixed"} else "scene",
+            max_duration=max_duration,
+        )
+    except FileNotFoundError as e:
+        raise HTTPException(status_code=400, detail=str(e)) from e
+
+
+class ExportClipsRequest(BaseModel):
+    clips: list[dict]
+    vertical_crop: bool = True
+
+
+@router.post("/jobs/{job_id}/export-clips")
+async def export_job_clips(job_id: str, body: ExportClipsRequest):
+    """Export social clips (FFmpeg) from a completed dub output."""
+    job = job_manager.get_job(job_id)
+    if not job:
+        raise HTTPException(status_code=404, detail="Job not found")
+    if job.get("status") != JobStatus.COMPLETED:
+        raise HTTPException(status_code=400, detail="Job must be completed.")
+
+    from app.services.clip_service import ClipSegment, ClipService
+
+    raw_clips = body.clips or []
+    vertical_crop = body.vertical_crop
+    if not raw_clips:
+        raise HTTPException(status_code=400, detail="No clips provided.")
+
+    segments = [
+        ClipSegment(
+            start=float(c["start"]),
+            end=float(c["end"]),
+            label=str(c.get("label") or f"Part {i + 1}"),
+        )
+        for i, c in enumerate(raw_clips)
+    ]
+
+    try:
+        service = ClipService()
+        exported = service.export_clips(job_id, job, segments, vertical_crop=vertical_crop)
+        if not exported:
+            raise HTTPException(status_code=500, detail="No clips were exported.")
+        return {"job_id": job_id, "clips": exported}
+    except FileNotFoundError as e:
+        raise HTTPException(status_code=400, detail=str(e)) from e
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.exception("Export clips failed for %s", job_id)
+        raise HTTPException(status_code=500, detail=str(e)) from e
+
+
 @router.post("/jobs/{job_id}/burn-subtitles")
 async def burn_job_subtitles(job_id: str, srt: str = Form(...)):
     """Re-merge source video + dubbed audio with edited SRT (Studio Editor export)."""
@@ -342,6 +445,7 @@ async def dubbing_capabilities():
             "network_tts": settings.allow_network_tts(),
             "url_import": settings.allow_network_downloads(),
         },
+        "gpu": gpu_info_dict(),
         "presets": {
             "hybrid": {
                 "translation": "google (online)",
@@ -424,65 +528,9 @@ async def delete_job(job_id: str):
     return {"status": "deleted", "job_id": job_id}
 
 
-# ─── Voice Catalog ──────────────────────────────────────────────────────────
-
-VOICE_CATALOG = [
-    # Vietnamese
-    {"id": "vi-VN-HoaiMyNeural", "name": "Hoài My", "lang": "vi", "gender": "Female"},
-    {"id": "vi-VN-NamMinhNeural", "name": "Nam Minh", "lang": "vi", "gender": "Male"},
-    # English
-    {"id": "en-US-AriaNeural", "name": "Aria (US)", "lang": "en", "gender": "Female"},
-    {"id": "en-US-GuyNeural", "name": "Guy (US)", "lang": "en", "gender": "Male"},
-    {"id": "en-US-JennyNeural", "name": "Jenny (US)", "lang": "en", "gender": "Female"},
-    {"id": "en-GB-SoniaNeural", "name": "Sonia (UK)", "lang": "en", "gender": "Female"},
-    {"id": "en-AU-NatashaNeural", "name": "Natasha (AU)", "lang": "en", "gender": "Female"},
-    {"id": "en-CA-LiamNeural", "name": "Liam (CA)", "lang": "en", "gender": "Male"},
-    # Japanese
-    {"id": "ja-JP-NanamiNeural", "name": "Nanami", "lang": "ja", "gender": "Female"},
-    {"id": "ja-JP-KeitaNeural", "name": "Keita", "lang": "ja", "gender": "Male"},
-    # Korean
-    {"id": "ko-KR-SunHiNeural", "name": "Sun-Hi", "lang": "ko", "gender": "Female"},
-    {"id": "ko-KR-InJoonNeural", "name": "InJoon", "lang": "ko", "gender": "Male"},
-    # Chinese
-    {"id": "zh-CN-XiaoxiaoNeural", "name": "Xiaoxiao", "lang": "zh", "gender": "Female"},
-    {"id": "zh-CN-YunxiNeural", "name": "Yunxi", "lang": "zh", "gender": "Male"},
-    {"id": "zh-HK-HiuGaaiNeural", "name": "HiuGaai (HK)", "lang": "zh", "gender": "Female"},
-    # French
-    {"id": "fr-FR-DeniseNeural", "name": "Denise", "lang": "fr", "gender": "Female"},
-    {"id": "fr-FR-HenriNeural", "name": "Henri", "lang": "fr", "gender": "Male"},
-    # Spanish
-    {"id": "es-ES-ElviraNeural", "name": "Elvira", "lang": "es", "gender": "Female"},
-    {"id": "es-ES-AlvaroNeural", "name": "Alvaro", "lang": "es", "gender": "Male"},
-    # German
-    {"id": "de-DE-KatjaNeural", "name": "Katja", "lang": "de", "gender": "Female"},
-    {"id": "de-DE-ConradNeural", "name": "Conrad", "lang": "de", "gender": "Male"},
-    # Portuguese
-    {"id": "pt-BR-FranciscaNeural", "name": "Francisca (BR)", "lang": "pt", "gender": "Female"},
-    {"id": "pt-BR-AntonioNeural", "name": "Antonio (BR)", "lang": "pt", "gender": "Male"},
-    # Italian
-    {"id": "it-IT-ElsaNeural", "name": "Elsa", "lang": "it", "gender": "Female"},
-    {"id": "it-IT-DiegoNeural", "name": "Diego", "lang": "it", "gender": "Male"},
-    # Russian
-    {"id": "ru-RU-SvetlanaNeural", "name": "Svetlana", "lang": "ru", "gender": "Female"},
-    {"id": "ru-RU-DmitryNeural", "name": "Dmitry", "lang": "ru", "gender": "Male"},
-    # Thai
-    {"id": "th-TH-PremwadeeNeural", "name": "Premwadee", "lang": "th", "gender": "Female"},
-    {"id": "th-TH-NiwatNeural", "name": "Niwat", "lang": "th", "gender": "Male"},
-    # Hindi
-    {"id": "hi-IN-SwaraNeural", "name": "Swara", "lang": "hi", "gender": "Female"},
-    {"id": "hi-IN-MadhurNeural", "name": "Madhur", "lang": "hi", "gender": "Male"},
-    # Arabic
-    {"id": "ar-SA-ZariyahNeural", "name": "Zariyah (SA)", "lang": "ar", "gender": "Female"},
-    {"id": "ar-SA-HamedNeural", "name": "Hamed (SA)", "lang": "ar", "gender": "Male"},
-    # Indonesian
-    {"id": "id-ID-GadisNeural", "name": "Gadis", "lang": "id", "gender": "Female"},
-    {"id": "id-ID-ArdiNeural", "name": "Ardi", "lang": "id", "gender": "Male"},
-]
-
-
 @router.get("/voices")
 async def list_voices():
-    return VOICE_CATALOG
+    return voices_payload()
 
 
 @router.post("/voice-preview")

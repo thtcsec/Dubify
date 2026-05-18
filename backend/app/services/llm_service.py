@@ -23,18 +23,27 @@ class LLMService:
         return "none", ""
 
     @staticmethod
-    def generate_news_script(raw_text: str, target_lang: str = "vi") -> str:
+    def llm_available() -> bool:
+        provider, api_key = LLMService._get_provider()
+        return provider != "none" and bool(api_key)
+
+    @staticmethod
+    def generate_news_script(raw_text: str, target_lang: str = "vi", *, studio_rewrite: bool = False) -> str:
         """
         Rewrite raw news text into an engaging, professional news script.
-        Falls back to raw text if no API key is configured.
+        studio_rewrite=True: use API keys even when PROCESSING_ENGINE=local (Studio toggle).
         """
-        if not settings.allow_cloud_llm():
+        if not studio_rewrite and not settings.allow_cloud_llm():
             logger.info("Processing mode does not allow cloud LLM rewrite. Returning raw text.")
             return raw_text.strip()
 
         provider, api_key = LLMService._get_provider()
 
         if provider == "none":
+            if studio_rewrite:
+                ollama = LLMService._try_ollama_rewrite(raw_text, target_lang)
+                if ollama:
+                    return ollama
             logger.warning("No LLM API key found. Falling back to raw text.")
             return raw_text.strip()
 
@@ -57,6 +66,27 @@ class LLMService:
             logger.error(f"LLM ({provider}) failed: {e}")
             return raw_text.strip()
         return raw_text.strip()
+
+    @staticmethod
+    def _try_ollama_rewrite(raw_text: str, target_lang: str) -> str:
+        """Local Ollama fallback when user disables verbatim script but has no cloud key."""
+        try:
+            url = settings.OLLAMA_API_BASE
+            prompt = (
+                f"Rewrite this into a short engaging news script in {target_lang}. "
+                "Spoken text only, no markdown or stage directions.\n\n"
+                f"{raw_text.strip()}"
+            )
+            payload = {"model": settings.OLLAMA_MODEL, "prompt": prompt, "stream": False}
+            response = requests.post(url, json=payload, timeout=120)
+            if response.status_code == 200:
+                out = (response.json().get("response") or "").strip()
+                if len(out) > 40 and out != raw_text.strip():
+                    logger.info("Studio script rewritten via Ollama (%d chars).", len(out))
+                    return out
+        except Exception as e:
+            logger.warning("Ollama script rewrite failed: %s", e)
+        return ""
 
     @staticmethod
     def generate_short_script(prompt: str, target_lang: str = "vi") -> str:

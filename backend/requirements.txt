@@ -29,3 +29,4 @@ tqdm
 python-dotenv
 requests
 vietnormalizer>=0.1.0
+playwright>=1.49.0

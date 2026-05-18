@@ -33,6 +33,11 @@ class Settings(BaseSettings):
     PROCESSING_MODE: str = "hybrid"
     DEFAULT_WHISPER_MODEL: str = "base"
     DEFAULT_NLLB_MODEL: str = "facebook/nllb-200-distilled-600M"
+    # GPU (RTX / CUDA) — USE_GPU=true + CUDA PyTorch enables Whisper/NLLB on GPU; NVENC for FFmpeg
+    USE_GPU: bool = True
+    WHISPER_DEVICE: str = "auto"  # auto | cuda | cpu
+    VIDEO_ENCODER: str = "auto"  # auto | nvenc | cpu
+    NLLB_USE_GPU: bool = True
     OLLAMA_API_BASE: str = "http://localhost:11434/api/generate"
     OLLAMA_MODEL: str = "llama3"
     
@@ -93,6 +98,9 @@ class Settings(BaseSettings):
 
     def allow_network_downloads(self) -> bool:
         return self.normalized_processing_mode() in {"hybrid", "online"}
+
+    def use_gpu(self) -> bool:
+        return bool(self.USE_GPU)
 
     def configured_cloud_providers(self) -> list[str]:
         providers: list[str] = []

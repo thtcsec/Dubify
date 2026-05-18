@@ -13,6 +13,7 @@ class TranslateService:
         self.service_type = service_type or settings.default_translation_service()  # "google", "nllb", "ollama"
         self.nllb_model = None
         self.nllb_tokenizer = None
+        self._nllb_device = "cpu"
 
     @staticmethod
     def _nllb_lang_code(lang: str) -> str:
@@ -39,12 +40,18 @@ class TranslateService:
         """Lazy load NLLB model."""
         if self.nllb_model is not None:
             return
-        
+
         from transformers import AutoModelForSeq2SeqLM, AutoTokenizer
+        from app.core.gpu import resolve_torch_device
+
         model_name = settings.DEFAULT_NLLB_MODEL
-        logger.info(f"Loading NLLB model: {model_name}")
+        device = resolve_torch_device() if settings.NLLB_USE_GPU and settings.use_gpu() else "cpu"
+        logger.info("Loading NLLB model: %s on %s", model_name, device)
         self.nllb_tokenizer = AutoTokenizer.from_pretrained(model_name)
         self.nllb_model = AutoModelForSeq2SeqLM.from_pretrained(model_name)
+        if device == "cuda":
+            self.nllb_model = self.nllb_model.cuda()
+        self._nllb_device = device
 
     def translate_text(self, text: str, source_lang: str = "auto") -> str:
         """Translate a single piece of text."""
@@ -97,6 +104,8 @@ class TranslateService:
         """Translate using local NLLB model."""
         self._load_nllb()
         inputs = self.nllb_tokenizer(text, return_tensors="pt")
+        if getattr(self, "_nllb_device", "cpu") == "cuda":
+            inputs = {k: v.cuda() for k, v in inputs.items()}
         target_lang_code = self._nllb_lang_code(self.target_lang)
         translated_tokens = self.nllb_model.generate(
             **inputs,
