@@ -12,6 +12,7 @@ Dubify borrows **patterns and algorithms**, not full vendored copies. Credits:
 | [AutoDubbing](https://github.com/andrewlevada/autodub) (concept) | ASR segment merge by sentence / pause |
 | [Pixelle-Video](https://github.com/AIDC-AI/Pixelle-Video) | `script_split.py`, HTML scene cards (`templates/studio/`), Playwright render |
 | [jianchang512/pyvideotrans](https://github.com/jianchang512/pyvideotrans) | Multi-provider TTS/ASR/translation patterns, retry logic, audio preprocessing |
+| [supertone-inc/supertonic](https://github.com/supertone-inc/supertonic) | Lightning-fast on-device TTS (99M params, 31 langs, Vietnamese, expression tags, ONNX) |
 | [PySceneDetect](https://github.com/Breakthrough/PySceneDetect) | Future: visual scene cuts for clip boundaries |
 | [FFmpeg](https://ffmpeg.org/) | Burn subtitles, clip export, 9:16 crop, audio sync, film grain, vignette |
 | [edge-tts](https://github.com/rany2/edge-tts) | Hybrid/online neural TTS |

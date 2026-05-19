@@ -69,6 +69,7 @@ class Settings(BaseSettings):
     OPENAI_TTS_MODEL: str = "tts-1"  # tts-1 or tts-1-hd
     OPENAI_TTS_VOICE: str = "nova"  # alloy, echo, fable, onyx, nova, shimmer
     KOKORO_API_URL: str = ""  # Local Kokoro TTS server (e.g. http://localhost:8880)
+    SUPERTONIC_API_URL: str = ""  # Supertonic TTS server (e.g. http://localhost:7788)
     ELEVENLABS_API_KEY: str = ""
     ELEVENLABS_MODEL: str = "eleven_multilingual_v2"
     # Audio preprocessing
