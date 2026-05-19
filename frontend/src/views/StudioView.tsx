@@ -64,7 +64,26 @@ export function StudioView({ targetLang, setTargetLang, onOpenBrandLayout }: Stu
     try {
       const formData = new FormData();
       formData.append('voice_id', selectedVoice);
-      formData.append('text', newsText.substring(0, 200) || 'Xin chào, đây là bản xem trước giọng nói.');
+      // Use a fixed sample sentence per language — preview is for hearing the voice tone, not the user's content
+      const sampleTexts: Record<string, string> = {
+        vi: 'Xin chào, đây là giọng đọc mẫu để bạn nghe thử chất lượng âm thanh.',
+        en: 'Hello, this is a sample voice preview so you can hear the tone and quality.',
+        ja: 'こんにちは、これは音声プレビューのサンプルです。',
+        ko: '안녕하세요, 이것은 음성 미리듣기 샘플입니다.',
+        zh: '你好，这是一个语音预览示例，让你听听音质。',
+        fr: 'Bonjour, ceci est un aperçu vocal pour entendre la qualité.',
+        es: 'Hola, esta es una muestra de voz para escuchar la calidad.',
+        de: 'Hallo, dies ist eine Sprachvorschau, um die Qualität zu hören.',
+        pt: 'Olá, esta é uma amostra de voz para ouvir a qualidade.',
+        it: 'Ciao, questa è un anteprima vocale per sentire la qualità.',
+        ru: 'Привет, это образец голоса для прослушивания качества.',
+        th: 'สวัสดี นี่คือตัวอย่างเสียงเพื่อให้คุณฟังคุณภาพ',
+        hi: 'नमस्ते, यह आवाज़ की गुणवत्ता सुनने के लिए एक नमूना है।',
+        ar: 'مرحبًا، هذه عينة صوتية لسماع جودة الصوت.',
+        id: 'Halo, ini adalah contoh suara untuk mendengar kualitasnya.',
+      };
+      const previewText = sampleTexts[targetLang] || sampleTexts['vi'];
+      formData.append('text', previewText);
       const response = await api.post('/voice-preview', formData, { responseType: 'blob' });
       const url = URL.createObjectURL(response.data);
       if (audioRef.current) { audioRef.current.pause(); }
