@@ -96,7 +96,17 @@ def build_html_scene_video(
     temp_dir.mkdir(parents=True, exist_ok=True)
 
     topic_label = (research_topic or "").strip()
-    fetch_images = use_scene_images and bool(topic_label)
+    # ALWAYS try to fetch scene images — this is what makes videos look professional
+    # Use script content as search topic if no explicit research_topic provided
+    if not topic_label:
+        # Extract topic from first scene title or first sentence of script
+        first_scene = timed_scenes[0] if timed_scenes else {}
+        topic_label = (
+            str(first_scene.get("title") or "")
+            or str(first_scene.get("body") or "")[:80].split(".")[0]
+            or script[:80].split("\n")[0]
+        ).strip()
+    fetch_images = bool(topic_label)  # Always fetch if we have any topic
     if fetch_images:
         from app.services.scene_image_service import resolve_scene_image
 
