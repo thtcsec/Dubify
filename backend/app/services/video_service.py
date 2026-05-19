@@ -249,7 +249,6 @@ class VideoService:
         active = "&H0000FFFF"
         spoken = "&H00FFFFFF"
         y_base = VideoService._karaoke_layout_y_base(width, height, caption_y_pct)
-        line_step = int(font_size * 1.45)
 
         ass_lines = [
             "[Script Info]",
@@ -267,10 +266,11 @@ class VideoService:
             "Format: Layer,Start,End,Style,Name,MarginL,MarginR,MarginV,Effect,Text",
         ]
 
-        for line_idx, line_words in enumerate(lines_grouped):
+        for _line_idx, line_words in enumerate(lines_grouped):
             if not line_words:
                 continue
-            line_y = y_base + line_idx * line_step
+            # Fixed caption band — do not stack lines lower over time
+            line_y = y_base
             for active_index, (w_start, w_end, _word) in enumerate(line_words):
                 parts: list[str] = []
                 for j, (_, __, w) in enumerate(line_words):
@@ -285,7 +285,7 @@ class VideoService:
                 line_text = " ".join(parts)
                 box = "{\\3c&H50000000&\\4c&H50000000&\\bord14\\shad0}"
                 pos = f"{{\\an2\\pos({width // 2},{line_y})}}"
-                fade = "{\\fad(80,120)}" if active_index == 0 and line_idx == 0 else ""
+                fade = "{\\fad(80,120)}" if active_index == 0 and _line_idx == 0 else ""
                 ass_lines.append(
                     f"Dialogue: 0,{VideoService._format_ass_time(w_start)},"
                     f"{VideoService._format_ass_time(w_end)},Karaoke,,0,0,0,,"
@@ -294,6 +294,52 @@ class VideoService:
 
         output_path.write_text("\n".join(ass_lines), encoding="utf-8")
         return output_path
+
+    @staticmethod
+    def _append_popup_overlay_dialogues(
+        ass_path: Path,
+        popup_timings: list[tuple[float, float, dict[str, str]]],
+        canvas_size: Tuple[int, int],
+        caption_y_pct: float | None = None,
+    ) -> None:
+        """Burn [STAT]/[DEF] popup cards into an existing ASS file."""
+        if not popup_timings or not ass_path.exists():
+            return
+
+        width, height = canvas_size
+        portrait = height > width
+        font_size = max(24, min(48, int(height * (0.038 if portrait else 0.032))))
+        y_pct = caption_y_pct if caption_y_pct is not None else (62.0 if portrait else 72.0)
+        popup_y = int(height * max(28.0, min(y_pct - 22.0, 52.0)) / 100.0)
+
+        body = ass_path.read_text(encoding="utf-8")
+        if "Style: StatPop" not in body:
+            style_line = (
+                f"Style: StatPop,Arial,{font_size},&H00B8FFFF,&H0000FFFF,&H00101010,&H90000000,"
+                f"-1,0,0,0,100,100,0,0,3,3,0,2,48,48,80,1"
+            )
+            def_style = (
+                f"Style: DefPop,Arial,{max(18, font_size - 2)},&H00E8B8FF,&H00E8B8FF,&H00101010,&H90000000,"
+                f"-1,0,0,0,100,100,0,0,3,3,0,2,48,48,80,1"
+            )
+            body = body.replace("[Events]", f"{style_line}\n{def_style}\n\n[Events]", 1)
+
+        lines = body.splitlines()
+        for start, end, popup in popup_timings:
+            label = "STAT" if popup.get("type") == "stat" else "DEF"
+            style = "StatPop" if popup.get("type") == "stat" else "DefPop"
+            text = VideoService._escape_ass_text(str(popup.get("text") or ""))
+            if not text:
+                continue
+            # Enhanced animation: scale bounce + blur fade for more visual impact
+            box = r"{\3c&H40000000&\4c&H60000000&\bord18\shad0}"
+            anim = r"{\fad(150,250)\fscx80\fscy80\t(0,350,\fscx115\fscy115)\t(350,500,\fscx100\fscy100)\blur0.6\t(0,200,\blur0)}"
+            pos = f"{{\\an8\\pos({width // 2},{popup_y})}}"
+            lines.append(
+                f"Dialogue: 2,{VideoService._format_ass_time(start)},{VideoService._format_ass_time(end)},"
+                f"{style},,0,0,0,,{pos}{box}{anim}{label}: {text}"
+            )
+        ass_path.write_text("\n".join(lines), encoding="utf-8")
 
     @staticmethod
     def _parse_vtt(vtt_path: Path) -> list[tuple[float, float, str]]:
@@ -692,6 +738,7 @@ class VideoService:
         karaoke_subs: bool = False,
         burn_subtitles: bool = False,
         caption_y_pct: float | None = None,
+        popup_timings: list[tuple[float, float, dict[str, str]]] | None = None,
     ) -> bool:
         """Assemble HTML scene slides with Ken Burns motion + crossfades."""
         if not scene_pngs:
@@ -768,6 +815,13 @@ class VideoService:
                     )
                 else:
                     VideoService._create_burn_ass(cues, ass_path, (width, height), font_scale=1.45)
+                if popup_timings:
+                    VideoService._append_popup_overlay_dialogues(
+                        ass_path,
+                        popup_timings,
+                        (width, height),
+                        caption_y_pct=caption_y_pct,
+                    )
                 vf_parts.append(f"ass='{VideoService._ffmpeg_subtitle_path(ass_path)}'")
 
             command = [

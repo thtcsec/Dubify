@@ -3,27 +3,42 @@ import requests
 from typing import Optional
 from app.core.config import settings
 from app.services.llm_models import catalog_entry, parse_llm_model_id
+from app.utils.script_lang import lang_instruction
 from app.utils.studio_script_format import clean_llm_studio_output
 
 logger = logging.getLogger(__name__)
 
-_STUDIO_REWRITE_SYSTEM = """You are a viral short-form news scriptwriter for vertical video (TikTok/Reels).
+_STUDIO_REWRITE_SYSTEM = """You are a viral short-form news scriptwriter for vertical video (TikTok/Reels/Shorts).
 
-Rewrite the user's notes into a NEW script in {lang}. Do NOT copy-paste URLs, markdown, bullet junk, or raw excerpts from the input.
+Rewrite the user's notes into a NEW script. {lang_instruction} Do NOT copy-paste URLs, markdown, bullet junk, or raw excerpts from the input.
 
 FORMAT (strict):
-- Use 2-4 scene lines: [Hook], [Story], [Insight], [Close] (localized titles OK).
-- Under each header: 2-4 short spoken sentences.
-- Mark every impressive NUMBER or percentage with [STAT: value — short label] on its own line or inline.
-- Mark technical terms the audience may not know with [DEF: term — one-line explanation].
-- Hook must grab attention in the first sentence. Include at least 2 [STAT: ...] markers total.
+- Use 3-5 scene sections: [Hook], [Story], [Insight], [Impact], [Close] (localized titles OK, e.g. [Mở đầu], [Câu chuyện]).
+- Under each header: 2-4 short punchy spoken sentences. Each sentence should be impactful and visual.
+- Mark EVERY impressive NUMBER, percentage, or metric with [STAT: value — short label] on its own line.
+  Include at least 3-4 [STAT: ...] markers total — these create animated popup cards in the video.
+- Mark technical terms or key concepts with [DEF: term — one-line explanation].
+  Include at least 2 [DEF: ...] markers — these create definition popup cards.
+- Hook MUST grab attention in the first 3 seconds with a bold claim or shocking stat.
+- Name real products, features, people, or news — avoid generic filler without facts.
+- Each scene should feel like a new visual "slide" — think infographic, not essay.
 - No markdown, no stage directions, no "Here is the script".
 
 Example snippet:
 [Hook]
-Android 17 changes everything.
-[STAT: 2 tỷ — thiết bị Android]
-[DEF: Gemini — AI điều khiển thao tác thay người dùng]
+Android 17 thay đổi mọi thứ.
+[STAT: 2 tỷ — thiết bị Android trên toàn cầu]
+[DEF: Gemini Nano — AI chạy trực tiếp trên điện thoại, không cần internet]
+
+[Story]
+Google vừa công bố tính năng điều khiển bằng giọng nói hoàn toàn mới.
+[STAT: 40% — nhanh hơn so với phiên bản trước]
+Bạn chỉ cần nói, Gemini sẽ thực hiện mọi thao tác thay bạn.
+
+[Insight]
+Điều này có nghĩa gì cho người dùng Việt Nam?
+[DEF: On-device AI — xử lý AI ngay trên máy, bảo mật dữ liệu tốt hơn]
+[STAT: 95% — độ chính xác nhận diện tiếng Việt]
 
 Write ONLY the script."""
 
@@ -91,7 +106,7 @@ class LLMService:
             raise ValueError("Script is empty.")
 
         lang = target_lang or "vi"
-        system_prompt = _STUDIO_REWRITE_SYSTEM.format(lang=lang)
+        system_prompt = _STUDIO_REWRITE_SYSTEM.format(lang_instruction=lang_instruction(lang))
         provider, api_key, model = LLMService._resolve_provider_and_model()
 
         if provider == "ollama" or (provider == "none" and not api_key):

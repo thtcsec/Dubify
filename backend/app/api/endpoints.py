@@ -38,22 +38,36 @@ url_service = URLService()
 
 # ─── Dubbing Endpoints ──────────────────────────────────────────────────────
 
+class JobRenameRequest(BaseModel):
+    filename: str
+
+
 @router.post("/dub")
 async def create_dub_job(
     background_tasks: BackgroundTasks,
     file: UploadFile = File(...),
-    target_lang: str = "vi"
+    target_lang: str = "vi",
+    voice_id: str = Form(""),
+    project_name: str = Form(""),
 ):
     """Upload a video file and start dubbing."""
-    file_id = job_manager.create_job(file.filename or "upload", job_type=JobType.DUBBING)
+    from app.utils.project_title import derive_dub_title
+
+    display_name = derive_dub_title(
+        project_name=project_name,
+        upload_filename=file.filename or "upload",
+    )
+    file_id = job_manager.create_job(display_name, job_type=JobType.DUBBING)
     safe_name = Path(file.filename or "upload").name
     input_path = settings.INPUT_DIR / f"{file_id}_{safe_name}"
 
     await save_upload_limited(file, input_path, MAX_UPLOAD_SIZE)
 
+    default_voice = voice_id.strip() or TTSService.default_voice_for_lang(target_lang)
     worker.add_job(file_id, {
         "source_path": input_path,
-        "target_lang": target_lang
+        "target_lang": target_lang,
+        "voice_id": default_voice,
     })
 
     return {
@@ -67,15 +81,22 @@ async def create_dub_job(
 async def dub_url(
     background_tasks: BackgroundTasks,
     url: str = Form(...),
-    target_lang: str = Form("vi")
+    target_lang: str = Form("vi"),
+    voice_id: str = Form(""),
+    project_name: str = Form(""),
 ):
     """Start dubbing from a video URL."""
+    from app.utils.project_title import derive_dub_title
+
     job_id = f"url_{os.urandom(4).hex()}"
-    job_manager.register_job(job_id, filename=url, job_type=JobType.DUBBING, url=url, target_lang=target_lang)
+    display_name = derive_dub_title(project_name=project_name, url=url)
+    default_voice = voice_id.strip() or TTSService.default_voice_for_lang(target_lang)
+    job_manager.register_job(job_id, filename=display_name, job_type=JobType.DUBBING, url=url, target_lang=target_lang)
 
     worker.add_job(job_id, {
         "source_path": url,
-        "target_lang": target_lang
+        "target_lang": target_lang,
+        "voice_id": default_voice,
     })
 
     return {"job_id": job_id}
@@ -91,7 +112,7 @@ async def create_studio_video(
     voice_id: str = Form("vi-VN-HoaiMyNeural"),
     duration_seconds: int = Form(0),
     aspect_ratio: str = Form("16:9"),
-    use_raw_script: bool = Form(True),
+    use_raw_script: bool = Form(False),
     studio_visual_mode: str = Form("html_scenes"),
     studio_template: str = Form("tiktok_news"),
     studio_render_engine: str = Form("auto"),
@@ -112,6 +133,10 @@ async def create_studio_video(
     social_left_pct: float = Form(4.4),
     social_bottom_pct: float = Form(6.25),
     caption_y_pct: float = Form(64.0),
+    research_topic: str = Form(""),
+    wiki_thumbnail_url: str = Form(""),
+    use_scene_images: bool = Form(False),
+    project_name: str = Form(""),
 ):
     """Create a studio video from script; background image is optional (gradient if omitted)."""
     # Input validation
@@ -122,8 +147,15 @@ async def create_studio_video(
     if duration_seconds < 0 or duration_seconds > 600:
         raise HTTPException(status_code=400, detail="duration_seconds must be between 0 and 600.")
 
+    from app.utils.project_title import derive_studio_title
+
     job_id = f"studio_{os.urandom(4).hex()}"
-    job_manager.register_job(job_id, filename="studio_project", job_type=JobType.STUDIO, text=text, target_lang=target_lang)
+    display_name = derive_studio_title(
+        project_name=project_name,
+        research_topic=research_topic,
+        script=text,
+    )
+    job_manager.register_job(job_id, filename=display_name, job_type=JobType.STUDIO, text=text, target_lang=target_lang)
 
     image_path: str | None = None
     if image is not None:
@@ -188,6 +220,10 @@ async def create_studio_video(
         "social_left_pct": social_left_pct,
         "social_bottom_pct": social_bottom_pct,
         "caption_y_pct": caption_y_pct,
+        "research_topic": research_topic.strip(),
+        "wiki_thumbnail_url": wiki_thumbnail_url.strip(),
+        "use_scene_images": use_scene_images,
+        "project_name": display_name,
     })
 
     return {"job_id": job_id}
@@ -545,6 +581,17 @@ async def resume_job(job_id: str):
     return {"status": "resumed", "job_id": job_id}
 
 
+@router.patch("/jobs/{job_id}")
+async def rename_job(job_id: str, body: JobRenameRequest):
+    """Rename a job for display in history/projects."""
+    name = (body.filename or "").strip()
+    if not name:
+        raise HTTPException(status_code=400, detail="Project name is required.")
+    if not job_manager.rename_job(job_id, name):
+        raise HTTPException(status_code=404, detail="Job not found")
+    return {"ok": True, "job_id": job_id, "filename": name[:200]}
+
+
 @router.delete("/jobs/{job_id}")
 async def delete_job(job_id: str):
     """Delete a completed/failed/cancelled job from history."""
@@ -587,6 +634,46 @@ async def delete_all_jobs(
 @router.get("/voices")
 async def list_voices():
     return voices_payload()
+
+
+@router.post("/research-video/research")
+async def research_video_topic(
+    topic: str = Form(...),
+    target_lang: str = Form("vi"),
+):
+    """Beta: research a topic and return script + sources for Studio render."""
+    from app.services.research_video_service import ResearchVideoService
+
+    if len(topic) > 500:
+        raise HTTPException(status_code=400, detail="Topic must be under 500 characters.")
+    try:
+        return ResearchVideoService.research_topic(topic, target_lang)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+
+@router.post("/research-video/research-stream")
+async def research_video_topic_stream(
+    topic: str = Form(...),
+    target_lang: str = Form("vi"),
+):
+    """NDJSON stream of research phases (Wikipedia → draft → verify → done)."""
+    from app.services.research_video_service import ResearchVideoService
+
+    if len(topic) > 500:
+        raise HTTPException(status_code=400, detail="Topic must be under 500 characters.")
+
+    def event_stream():
+        try:
+            for event in ResearchVideoService.research_topic_iter(topic, target_lang):
+                yield json.dumps(event, ensure_ascii=False) + "\n"
+        except ValueError as exc:
+            yield json.dumps({"phase": "error", "message": str(exc)}) + "\n"
+        except Exception as exc:
+            logger.exception("Research stream failed")
+            yield json.dumps({"phase": "error", "message": str(exc)}) + "\n"
+
+    return StreamingResponse(event_stream(), media_type="application/x-ndjson")
 
 
 @router.post("/studio/rewrite-script")
