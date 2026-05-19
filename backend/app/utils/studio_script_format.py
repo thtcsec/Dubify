@@ -81,7 +81,15 @@ def strip_section_markers_for_tts(text: str) -> str:
 
 def strip_popup_markers_for_tts(text: str) -> str:
     """Remove [STAT: ...] / [DEF: ...] so TTS does not read labels aloud."""
-    without = strip_section_markers_for_tts(_STAT_DEF_RE.sub("", text or ""))
+    # Remove complete markers: [STAT: xxx] and [DEF: xxx]
+    without = _STAT_DEF_RE.sub("", text or "")
+    # Also remove partial/malformed markers that regex might miss
+    without = re.sub(r"\[STAT:[^\]]*\]?", "", without, flags=re.IGNORECASE)
+    without = re.sub(r"\[DEF:[^\]]*\]?", "", without, flags=re.IGNORECASE)
+    # Remove any remaining "STAT:" or "DEF:" prefixes (after bracket stripping)
+    without = re.sub(r"(?:^|\s)(?:STAT|DEF)\s*:\s*", " ", without, flags=re.IGNORECASE)
+    # Strip section markers
+    without = strip_section_markers_for_tts(without)
     without = re.sub(r"\s+", " ", without)
     return without.strip()
 

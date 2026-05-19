@@ -31,12 +31,12 @@ def _studio_vtt_ts(seconds: float) -> str:
 # Default Edge-TTS voices per target language (dubbing uses these when no voice_id is sent).
 # Alternate voices tried when the primary Edge voice returns NoAudioReceived.
 ALT_EDGE_VOICES: dict[str, list[str]] = {
-    "vi": ["vi-VN-NamMinhNeural", "vi-VN-HoaiMyNeural"],
-    "en": ["en-US-GuyNeural", "en-US-JennyNeural"],
+    "vi": ["vi-VN-HoaiMyNeural", "vi-VN-NamMinhNeural"],
+    "en": ["en-US-JennyNeural", "en-US-GuyNeural"],
 }
 
 DEFAULT_EDGE_VOICES: dict[str, str] = {
-    "vi": "vi-VN-HoaiMyNeural",
+    "vi": "vi-VN-NamMinhNeural",
     "en": "en-US-JennyNeural",
     "ja": "ja-JP-NanamiNeural",
     "ko": "ko-KR-SunHiNeural",
@@ -560,15 +560,41 @@ class TTSService:
         return re.sub(r"\n{3,}", "\n\n", without_headers).strip()
 
     def _edge_voice_fallbacks(self, primary_voice: str) -> list[str]:
+        """Build fallback voice list — prioritize same gender as primary."""
         voices: list[str] = []
-        for candidate in [primary_voice, self.default_voice_for_lang(self.target_lang)]:
-            if candidate and candidate not in voices:
-                voices.append(candidate)
+        # Primary voice first
+        if primary_voice and primary_voice not in voices:
+            voices.append(primary_voice)
+        # Same-gender default (don't switch male→female)
+        default = self.default_voice_for_lang(self.target_lang)
+        if default and default not in voices:
+            # Only add default if same gender hint or if primary is empty
+            if not primary_voice or self._same_gender(primary_voice, default):
+                voices.append(default)
+        # Alt voices — filter by same gender
         lang = (self.target_lang or "vi").split("-")[0].lower()
         for candidate in ALT_EDGE_VOICES.get(lang, []):
             if candidate not in voices:
-                voices.append(candidate)
+                if not primary_voice or self._same_gender(primary_voice, candidate):
+                    voices.append(candidate)
+        # If still only 1 voice, add all alts as last resort
+        if len(voices) < 2:
+            for candidate in ALT_EDGE_VOICES.get(lang, []):
+                if candidate not in voices:
+                    voices.append(candidate)
         return voices
+
+    @staticmethod
+    def _same_gender(voice_a: str, voice_b: str) -> bool:
+        """Check if two Edge-TTS voice IDs are likely the same gender."""
+        # Edge voice naming: xx-XX-NameNeural — male names tend to have specific patterns
+        male_hints = {"namminh", "guy", "liam", "keita", "injoon", "yunxi", "henri", "alvaro",
+                      "conrad", "antonio", "diego", "dmitry", "niwat", "madhur", "hamed", "ardi"}
+        a_lower = voice_a.lower()
+        b_lower = voice_b.lower()
+        a_is_male = any(h in a_lower for h in male_hints)
+        b_is_male = any(h in b_lower for h in male_hints)
+        return a_is_male == b_is_male
 
     @staticmethod
     def _sanitize_for_edge_tts(text: str) -> str:
