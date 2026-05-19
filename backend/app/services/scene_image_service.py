@@ -130,37 +130,51 @@ def fetch_wikipedia_bundle(topic: str, lang: str = "vi") -> dict[str, str]:
 
 
 def _scene_image_queries(topic: str, scene_title: str, scene_body: str, scene_index: int) -> list[str]:
-    """Build stock-photo search queries biased toward tech / events — never random."""
+    """Build stock-photo search queries from actual scene content — not generic."""
+    # Extract real keywords from body (most important source)
+    body = re.sub(r"\[.*?\]", " ", scene_body or "")  # Remove [STAT:]/[DEF:] markers
+    body = re.sub(r"\s+", " ", body).strip()
+
     topic_clean = re.sub(r"\s+", " ", (topic or "").strip())
+    # Skip generic section titles like "Mở đầu", "Hook", "Câu chuyện"
     title = "" if _GENERIC_SCENE.match((scene_title or "").strip()) else (scene_title or "").strip()
-    body = re.sub(r"\[.*?\]", " ", scene_body or "")
-    body = re.sub(r"\s+", " ", body).strip()[:80]
+
+    # Extract named entities / keywords from body (capitalized words, tech terms)
+    keywords = []
+    # Find capitalized words and known tech terms
+    for word in re.findall(r"[A-Z][a-zA-Z]+(?:\s+[A-Z][a-zA-Z]+)*", body):
+        if len(word) > 2 and word not in ("The", "This", "That", "These", "Those"):
+            keywords.append(word)
+    # Also extract Vietnamese proper nouns (words after common patterns)
+    for match in re.finditer(r"(?:như|của|từ|với|và)\s+([A-Z]\w+(?:\s+[A-Z]\w+)*)", body):
+        keywords.append(match.group(1))
 
     queries: list[str] = []
-    if topic_clean:
-        queries.append(f"{topic_clean} developer conference keynote")
-        queries.append(f"{topic_clean} technology presentation")
-    if title:
-        queries.append(f"{topic_clean} {title} technology".strip())
-    if body:
-        queries.append(f"{topic_clean} {body}".strip())
 
-    low = topic_clean.lower()
-    if "google" in low or "i/o" in low or "io" in low.split():
-        queries.extend(
-            [
-                "Google I/O developer conference stage",
-                "Google keynote presentation",
-                "Android developer conference",
-            ]
-        )
-    queries.extend(
-        [
-            "software developer conference audience",
-            "tech keynote stage presentation",
-            "silicon valley technology conference",
-        ]
-    )
+    # Best queries: use actual keywords from content
+    if keywords:
+        # Top 3 keywords as primary query
+        primary = " ".join(keywords[:3])
+        queries.append(f"{primary} technology")
+        queries.append(primary)
+        if len(keywords) > 3:
+            queries.append(" ".join(keywords[3:6]))
+
+    # Use topic (from script first sentence) + body excerpt
+    if topic_clean and len(topic_clean) > 5:
+        queries.append(f"{topic_clean[:60]} technology")
+
+    # Use body first sentence as query
+    first_sentence = body.split(".")[0].strip()[:60] if body else ""
+    if first_sentence and len(first_sentence) > 10:
+        queries.append(first_sentence)
+
+    # Fallback generic tech queries (only if nothing else works)
+    queries.extend([
+        "artificial intelligence technology",
+        "modern technology abstract",
+        "digital innovation futuristic",
+    ])
 
     seen: set[str] = set()
     unique: list[str] = []

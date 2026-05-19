@@ -97,15 +97,15 @@ def build_html_scene_video(
 
     topic_label = (research_topic or "").strip()
     # ALWAYS try to fetch scene images — this is what makes videos look professional
-    # Use script content as search topic if no explicit research_topic provided
+    # Extract meaningful topic from script content (not section headers like "Mở đầu")
     if not topic_label:
-        # Extract topic from first scene title or first sentence of script
-        first_scene = timed_scenes[0] if timed_scenes else {}
-        topic_label = (
-            str(first_scene.get("title") or "")
-            or str(first_scene.get("body") or "")[:80].split(".")[0]
-            or script[:80].split("\n")[0]
-        ).strip()
+        # Get actual content keywords from script (skip [Section] headers and [STAT/DEF] markers)
+        import re
+        clean_script = re.sub(r"\[[^\]]*\]", "", script or "")  # Remove all [brackets]
+        clean_script = re.sub(r"\s+", " ", clean_script).strip()
+        # Take first meaningful sentence as topic
+        sentences = [s.strip() for s in clean_script.split(".") if len(s.strip()) > 10]
+        topic_label = sentences[0][:100] if sentences else clean_script[:100]
     fetch_images = bool(topic_label)  # Always fetch if we have any topic
     if fetch_images:
         from app.services.scene_image_service import resolve_scene_image

@@ -14,16 +14,17 @@ Rewrite the user's notes into a NEW script. {lang_instruction} Do NOT copy-paste
 
 CRITICAL RULES:
 - ONLY use numbers/stats that are ACTUALLY mentioned in the user's input or are widely known public facts.
-- Do NOT invent statistics. If the input has no numbers, use qualitative statements instead of fake percentages.
+- Do NOT invent statistics. If the input has no numbers, DO NOT add [STAT:] markers at all.
 - Include DATES when available (e.g. "tháng 5/2026", "tuần trước", "hôm qua").
 - Reference REAL sources mentioned in the input (company names, report names, news outlets).
 - If the input mentions a rumor/leak, say "theo tin rò rỉ" or "nguồn tin cho biết" — don't present rumors as facts.
+- NEVER fabricate percentages like "70%", "90%", "50%" unless the input explicitly states them.
 
 FORMAT (strict):
 - Use 3-5 scene sections: [Hook], [Story], [Insight], [Impact], [Close] (localized titles OK).
 - Under each header: 2-4 short punchy spoken sentences. Each sentence should be impactful.
 - [STAT: value — label] — ONLY for real numbers from the input. Do NOT invent stats.
-  If input has numbers, include 2-4 [STAT:] markers. If no numbers, use 0-1 markers max.
+  If input has NO numbers at all, use ZERO [STAT:] markers. Never fabricate data.
 - [DEF: term — explanation] — for technical terms the audience may not know. Include 1-2.
 - Hook MUST grab attention with the most newsworthy fact from the input.
 - Include time references: "hôm nay", "tuần này", "tháng 5/2026", etc.
