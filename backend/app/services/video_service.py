@@ -692,7 +692,7 @@ class VideoService:
                 f"y='ih/2-(ih/zoom/2)':"
                 f"d=1:s={width}x{height}:fps=30,"
                 f"eq=saturation=1.08:contrast=1.03:brightness=0.01"
-                f"{self._grain_vignette_filter()}"
+                f"{VideoService._grain_vignette_filter()}"
                 f"{subtitle_filter}"
                 f",format=yuv420p"
             )
@@ -821,7 +821,7 @@ class VideoService:
             fade = max(0.35, min(fade_seconds, 0.85))
             for index, (png_path, duration) in enumerate(scene_pngs):
                 seg_out = temp_dir / f"scene_{index:03d}.mp4"
-                dur = max(duration, 0.8)
+                dur = max(duration, fade + 0.5)  # Ensure scene > fade duration
                 if len(scene_pngs) > 1:
                     dur += fade * 0.5
 

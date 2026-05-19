@@ -1,5 +1,4 @@
 import { useState } from 'react';
-import { motion, AnimatePresence } from 'framer-motion';
 import { AppSidebar } from './components/AppSidebar';
 import { DashboardHeader } from './components/dashboard/Header';
 import { ErrorBoundary } from './components/ErrorBoundary';
@@ -8,6 +7,7 @@ import { isTimeoutError, extractApiErrorMessage } from './lib/errors';
 // Views
 import { DashboardView } from './views/DashboardView';
 import { StudioView } from './views/StudioView';
+import { ResearchVideoView } from './views/ResearchVideoView';
 import { BrandLayoutView } from './views/BrandLayoutView';
 import { StudioEditorView } from './views/StudioEditorView';
 import { ShortsView } from './views/ShortsView';
@@ -34,6 +34,8 @@ export default function App() {
 
   // Global State
   const [targetLang, setTargetLang] = useState('vi');
+  const [dubVoiceId, setDubVoiceId] = useState('vi-VN-HoaiMyNeural');
+  const [projectName, setProjectName] = useState('');
   const [jobId, setJobId] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(false);
 
@@ -52,6 +54,9 @@ export default function App() {
     try {
       const response = await api.post('/fetch-info', formData);
       setVideoInfo(response.data);
+      if (response.data?.title) {
+        setProjectName((prev) => prev.trim() || String(response.data.title).slice(0, 120));
+      }
     } catch (err) {
       if (isTimeoutError(err)) {
         setFetchError(t.dashboard.fetchTimeout);
@@ -68,6 +73,13 @@ export default function App() {
     setFetchError(null);
     const formData = new FormData();
     formData.append('target_lang', targetLang);
+    if (dubVoiceId) formData.append('voice_id', dubVoiceId);
+    const name =
+      projectName.trim() ||
+      videoInfo?.title?.slice(0, 120) ||
+      (file?.name ? file.name.replace(/\.[^.]+$/, '') : '') ||
+      '';
+    if (name) formData.append('project_name', name);
     try {
       let response;
       if (file) {
@@ -94,16 +106,23 @@ export default function App() {
     setFile(null);
     setVideoUrl('');
     setVideoInfo(null);
+    setProjectName('');
     setFetchError(null);
   };
 
-  const renderView = () => {
-    switch (currentView) {
+  const renderView = (view?: string) => {
+    const v = view || currentView;
+    switch (v) {
       case 'dashboard':
         return (
           <DashboardView 
             targetLang={targetLang}
             setTargetLang={setTargetLang}
+            voiceId={dubVoiceId}
+            setVoiceId={setDubVoiceId}
+            projectName={projectName}
+            setProjectName={setProjectName}
+            suggestedProjectName={videoInfo?.title || file?.name?.replace(/\.[^.]+$/, '') || ''}
             jobId={jobId}
             isLoading={isLoading}
             file={file}
@@ -122,6 +141,14 @@ export default function App() {
       case 'studio':
         return (
           <StudioView
+            targetLang={targetLang}
+            setTargetLang={setTargetLang}
+            onOpenBrandLayout={() => setCurrentView('brandLayout')}
+          />
+        );
+      case 'researchVideo':
+        return (
+          <ResearchVideoView
             targetLang={targetLang}
             setTargetLang={setTargetLang}
             onOpenBrandLayout={() => setCurrentView('brandLayout')}
@@ -163,20 +190,20 @@ export default function App() {
           <DashboardHeader currentView={currentView} />
 
           <main className="flex-1 min-w-0 overflow-y-auto p-6 md:p-8">
-            <AnimatePresence mode="wait">
-              <motion.div
-                key={currentView}
-                initial={{ opacity: 0, scale: 0.98 }}
-                animate={{ opacity: 1, scale: 1 }}
-                exit={{ opacity: 0, scale: 1.02 }}
-                transition={{ duration: 0.2 }}
-                className="max-w-7xl mx-auto h-full"
-              >
-                <ErrorBoundary>
-                  {renderView()}
-                </ErrorBoundary>
-              </motion.div>
-            </AnimatePresence>
+            <div className="max-w-7xl mx-auto h-full">
+              <ErrorBoundary>
+                <div className={currentView === 'dashboard' ? '' : 'hidden'}>{renderView('dashboard')}</div>
+                <div className={currentView === 'studio' ? '' : 'hidden'}>{renderView('studio')}</div>
+                <div className={currentView === 'researchVideo' ? '' : 'hidden'}>{renderView('researchVideo')}</div>
+                <div className={currentView === 'shorts' ? '' : 'hidden'}>{renderView('shorts')}</div>
+                <div className={currentView === 'brandLayout' ? '' : 'hidden'}>{renderView('brandLayout')}</div>
+                {currentView === 'editor' && renderView('editor')}
+                {currentView === 'projects' && renderView('projects')}
+                {currentView === 'history' && renderView('history')}
+                {currentView === 'settings' && renderView('settings')}
+                {currentView === 'help' && renderView('help')}
+              </ErrorBoundary>
+            </div>
           </main>
         </div>
       </div>
