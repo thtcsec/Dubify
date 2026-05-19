@@ -407,6 +407,19 @@ class VideoService:
         return output_path
 
     @staticmethod
+    def _grain_vignette_filter() -> str:
+        """Build FFmpeg filter string for grain and vignette based on settings."""
+        parts = []
+        if getattr(settings, "STUDIO_GRAIN_ENABLED", True):
+            seed = getattr(settings, "STUDIO_GRAIN_SEED", 42)
+            parts.append(f"noise=c0s=3:c0f=t:c0_seed={seed}")
+        if getattr(settings, "STUDIO_VIGNETTE_ENABLED", True):
+            parts.append("vignette=PI/5")
+        if parts:
+            return "," + ",".join(parts)
+        return ""
+
+    @staticmethod
     def extract_audio(video_path: Path, output_path: Path, sample_rate: int = 16000) -> bool:
         """Extract mono audio from video file."""
         try:
@@ -678,10 +691,9 @@ class VideoService:
                 f"x='iw/2-(iw/zoom/2)':"
                 f"y='ih/2-(ih/zoom/2)':"
                 f"d=1:s={width}x{height}:fps=30,"
-                f"eq=saturation=1.08:contrast=1.03:brightness=0.01,"
-                f"noise=c0s=3:c0f=t"  # subtle film grain
-                f"{subtitle_filter},"
-                f"vignette=PI/5"  # gentle vignette
+                f"eq=saturation=1.08:contrast=1.03:brightness=0.01"
+                f"{self._grain_vignette_filter()}"
+                f"{subtitle_filter}"
                 f",format=yuv420p"
             )
 

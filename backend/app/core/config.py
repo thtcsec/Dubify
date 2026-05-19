@@ -70,6 +70,14 @@ class Settings(BaseSettings):
     # Audio preprocessing
     ENABLE_AUDIO_PREPROCESSING: bool = False  # UVR vocal separation before ASR
     AUDIO_PREPROCESS_MODEL: str = "UVR-MDX-NET-Inst_HQ_4"
+    # Studio visual effects
+    STUDIO_GRAIN_ENABLED: bool = True
+    STUDIO_VIGNETTE_ENABLED: bool = True
+    STUDIO_GRAIN_SEED: int = 42  # Fixed seed for deterministic output
+    # Resource limits
+    MAX_CONCURRENT_PLAYWRIGHT: int = 2
+    MAX_CONCURRENT_FFMPEG: int = 3
+    MAX_GPU_JOBS: int = 1
     # Target voiceover length for AI Research Video (seconds)
     RESEARCH_VIDEO_TARGET_SECONDS: int = 45
 
