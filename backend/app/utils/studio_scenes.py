@@ -7,7 +7,11 @@ from dataclasses import dataclass
 
 from app.utils.script_split import split_spoken_lines
 
-_SECTION_RE = re.compile(r"^\s*\[([^\]]+)\]\s*$", re.MULTILINE)
+# Scene headers only — [STAT:]/[DEF:] are popups, not scenes.
+_SECTION_RE = re.compile(
+    r"^\s*\[(?!STAT:|DEF:)([^\]]+)\]\s*$",
+    re.MULTILINE | re.IGNORECASE,
+)
 _MAX_AUTO_SCENES = 7
 _MIN_CHARS_AUTO_SPLIT = 80
 
@@ -50,7 +54,7 @@ class StudioScene:
         return len(self.lines)
 
 
-def parse_studio_scenes(text: str, max_chars_per_line: int = 90) -> list[StudioScene]:
+def parse_studio_scenes(text: str, max_chars_per_line: int = 100) -> list[StudioScene]:
     """Split script on [Section Title] markers; fallback to a single scene."""
     cleaned = (text or "").strip()
     if not cleaned:
