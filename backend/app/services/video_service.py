@@ -23,6 +23,12 @@ STUDIO_XFADE_TRANSITIONS = (
     "slideup",
     "slideright",
     "fadeblack",
+    "wiperight",
+    "wipeleft",
+    "dissolve",
+    "zoomin",
+    "slideleft",
+    "fadewhite",
 )
 
 class VideoService:
