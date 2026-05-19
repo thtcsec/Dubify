@@ -113,6 +113,7 @@ def assign_scene_timings(
     timed: list[dict] = []
     cursor = 0
     n_cues = len(cue_starts)
+    min_scene_duration = 3.0  # Minimum 3s per scene (enough for xfade + content)
 
     for scene in scenes:
         count = max(scene.line_count, 1)
@@ -125,22 +126,34 @@ def assign_scene_timings(
             end = cue_ends[slice_end - 1] if slice_end > slice_start else total_duration
         elif timed:
             start = timed[-1]["end"]
-            end = min(start + 2.0, total_duration)
+            end = min(start + min_scene_duration, total_duration)
         else:
             start = 0.0
-            end = min(total_duration, 3.0)
+            end = min(total_duration, min_scene_duration)
+
+        # Enforce minimum scene duration
+        if end - start < min_scene_duration:
+            end = min(start + min_scene_duration, total_duration)
 
         timed.append(
             {
                 "title": scene.title,
                 "body": scene.body,
                 "start": max(0.0, start),
-                "end": max(start + 0.35, end),
+                "end": max(start + min_scene_duration, end),
             }
         )
 
+    # Ensure last scene extends to total duration
     if timed and timed[-1]["end"] < total_duration:
         timed[-1]["end"] = total_duration
+
+    # Fix overlaps: if scene N start < scene N-1 end, adjust
+    for i in range(1, len(timed)):
+        if timed[i]["start"] < timed[i - 1]["end"]:
+            timed[i]["start"] = timed[i - 1]["end"]
+        if timed[i]["end"] <= timed[i]["start"]:
+            timed[i]["end"] = min(timed[i]["start"] + min_scene_duration, total_duration)
 
     return timed
 

@@ -960,32 +960,60 @@ class VideoService:
         for index, nxt in enumerate(segment_paths[1:], start=1):
             merged = output_path.parent / f"xfade_{index}.mp4"
             dur_current = VideoService.get_duration(current)
-            offset = max(dur_current - fade, 0.15)
+            dur_next = VideoService.get_duration(nxt)
+
+            # Skip xfade if either segment is too short — just concat instead
+            if dur_current < fade + 0.5 or dur_next < fade + 0.5:
+                logger.warning("Scene %d too short for xfade (%.1fs), using hard cut.", index, min(dur_current, dur_next))
+                # Simple concat without transition
+                list_file = output_path.parent / f"concat_{index}.txt"
+                list_file.write_text(
+                    f"file '{Path(current).resolve().as_posix()}'\nfile '{Path(nxt).resolve().as_posix()}'\n",
+                    encoding="utf-8",
+                )
+                subprocess.run(
+                    ["ffmpeg", "-y", "-f", "concat", "-safe", "0", "-i", str(list_file), "-c", "copy", str(merged)],
+                    check=True, stdout=subprocess.DEVNULL, stderr=subprocess.PIPE,
+                )
+                list_file.unlink(missing_ok=True)
+                current = merged
+                continue
+
+            offset = max(dur_current - fade, 0.2)
             transition = transition_list[index - 1] if index - 1 < len(transition_list) else "fade"
             if transition not in STUDIO_XFADE_TRANSITIONS:
                 transition = "fade"
             filter_complex = (
                 f"[0:v][1:v]xfade=transition={transition}:duration={fade:.3f}:offset={offset:.3f}[v]"
             )
-            subprocess.run(
-                [
-                    "ffmpeg",
-                    "-y",
-                    "-i",
-                    str(current),
-                    "-i",
-                    str(nxt),
-                    "-filter_complex",
-                    filter_complex,
-                    "-map",
-                    "[v]",
-                    *video_encoder_args(crf=22),
-                    str(merged),
-                ],
-                check=True,
-                stdout=subprocess.DEVNULL,
-                stderr=subprocess.PIPE,
-            )
+            try:
+                subprocess.run(
+                    [
+                        "ffmpeg", "-y",
+                        "-i", str(current),
+                        "-i", str(nxt),
+                        "-filter_complex", filter_complex,
+                        "-map", "[v]",
+                        *video_encoder_args(crf=22),
+                        str(merged),
+                    ],
+                    check=True, stdout=subprocess.DEVNULL, stderr=subprocess.PIPE,
+                )
+            except subprocess.CalledProcessError:
+                # NVENC can fail on short segments — retry with CPU encoder
+                logger.warning("xfade with HW encoder failed at scene %d, retrying with libx264.", index)
+                subprocess.run(
+                    [
+                        "ffmpeg", "-y",
+                        "-i", str(current),
+                        "-i", str(nxt),
+                        "-filter_complex", filter_complex,
+                        "-map", "[v]",
+                        "-c:v", "libx264", "-preset", "fast", "-crf", "22",
+                        str(merged),
+                    ],
+                    check=True, stdout=subprocess.DEVNULL, stderr=subprocess.PIPE,
+                )
             current = merged
         shutil.copy2(current, output_path)
 
