@@ -215,23 +215,41 @@ class VideoService:
         return output_path
 
     @staticmethod
+    def _karaoke_layout_y_base(
+        width: int,
+        height: int,
+        caption_y_pct: float | None = None,
+    ) -> int:
+        """TikTok safe zone: ~62–68% from top on vertical, lower third on landscape."""
+        if caption_y_pct is not None:
+            return int(height * max(35.0, min(caption_y_pct, 85.0)) / 100.0)
+        if height > width:
+            return int(height * 0.64)
+        return int(height * 0.78)
+
+    @staticmethod
     def _create_karaoke_ass(
         cues: list[tuple[float, float, str]],
         output_path: Path,
         canvas_size: Tuple[int, int],
         font_scale: float = 1.0,
+        caption_y_pct: float | None = None,
     ) -> Path:
-        """TikTok-style: pop-in line + per-word colour highlight (no \\k tags — libass-safe)."""
+        """TikTok pill-karaoke: per-word highlight + mid-frame placement (HyperFrames caption-pill inspired)."""
         from app.utils.studio_karaoke import expand_cues_to_words, group_words_into_lines
 
         width, height = canvas_size
-        font_size, margin_v = VideoService._subtitle_style_for_height(height, scale=font_scale * 1.2)
+        portrait = height > width
+        font_size = max(22, min(52, int(height * (0.042 if portrait else 0.034) * font_scale)))
         word_cues = expand_cues_to_words(cues)
-        lines_grouped = group_words_into_lines(word_cues, max_words=7 if height > width else 6)
+        max_words = 5 if portrait else 8
+        lines_grouped = group_words_into_lines(word_cues, max_words=max_words)
 
-        inactive = "&H00B0B0B0"
-        active = "&H0000D7FF"
-        y_pos = height - margin_v
+        inactive = "&H00B8B8B8"
+        active = "&H0000FFFF"
+        spoken = "&H00FFFFFF"
+        y_base = VideoService._karaoke_layout_y_base(width, height, caption_y_pct)
+        line_step = int(font_size * 1.45)
 
         ass_lines = [
             "[Script Info]",
@@ -243,7 +261,7 @@ class VideoService:
             "",
             "[V4+ Styles]",
             "Format: Name,Fontname,Fontsize,PrimaryColour,SecondaryColour,OutlineColour,BackColour,Bold,Italic,Underline,StrikeOut,ScaleX,ScaleY,Spacing,Angle,BorderStyle,Outline,Shadow,Alignment,MarginL,MarginR,MarginV,Encoding",
-            f"Style: Karaoke,Arial,{font_size},&H00FFFFFF,&H0000D7FF,&H00101010,&H96000000,-1,0,0,0,100,100,0,0,1,3,1,2,48,48,{margin_v},1",
+            f"Style: Karaoke,Arial,{font_size},&H00FFFFFF,&H0000FFFF,&H00101010,&H80000000,-1,0,0,0,100,100,0,0,3,4,0,2,48,48,80,1",
             "",
             "[Events]",
             "Format: Layer,Start,End,Style,Name,MarginL,MarginR,MarginV,Effect,Text",
@@ -252,20 +270,26 @@ class VideoService:
         for line_idx, line_words in enumerate(lines_grouped):
             if not line_words:
                 continue
-            line_y = y_pos - line_idx * int(font_size * 1.35)
+            line_y = y_base + line_idx * line_step
             for active_index, (w_start, w_end, _word) in enumerate(line_words):
                 parts: list[str] = []
                 for j, (_, __, w) in enumerate(line_words):
-                    colour = active if j == active_index else inactive
+                    if j == active_index:
+                        colour = active
+                    elif j < active_index:
+                        colour = spoken
+                    else:
+                        colour = inactive
                     safe = VideoService._escape_ass_text(w)
-                    parts.append(f"{{\\1c{colour}&}}{safe}")
+                    parts.append(f"{{\\1c{colour}&\\b1}}{safe}")
                 line_text = " ".join(parts)
+                box = "{\\3c&H50000000&\\4c&H50000000&\\bord14\\shad0}"
                 pos = f"{{\\an2\\pos({width // 2},{line_y})}}"
-                fade = "{\\fad(60,100)}" if active_index == 0 else ""
+                fade = "{\\fad(80,120)}" if active_index == 0 and line_idx == 0 else ""
                 ass_lines.append(
                     f"Dialogue: 0,{VideoService._format_ass_time(w_start)},"
                     f"{VideoService._format_ass_time(w_end)},Karaoke,,0,0,0,,"
-                    f"{pos}{fade}{line_text}"
+                    f"{pos}{box}{fade}{line_text}"
                 )
 
         output_path.write_text("\n".join(ass_lines), encoding="utf-8")
@@ -591,7 +615,7 @@ class VideoService:
                     if srt_path.suffix.lower() == ".srt"
                     else VideoService._parse_vtt(srt_path)
                 )
-                VideoService._create_burn_ass(cues, ass_path, (width, height), font_scale=1.4)
+                VideoService._create_karaoke_ass(cues, ass_path, (width, height), font_scale=1.25)
                 subtitle_filter = f",ass='{VideoService._ffmpeg_subtitle_path(ass_path)}'"
 
             motion_filter = (
@@ -667,6 +691,7 @@ class VideoService:
         fade_seconds: float = 0.45,
         karaoke_subs: bool = False,
         burn_subtitles: bool = False,
+        caption_y_pct: float | None = None,
     ) -> bool:
         """Assemble HTML scene slides with Ken Burns motion + crossfades."""
         if not scene_pngs:
@@ -734,7 +759,13 @@ class VideoService:
                     else VideoService._parse_vtt(srt_path)
                 )
                 if karaoke_subs:
-                    VideoService._create_karaoke_ass(cues, ass_path, (width, height), font_scale=1.35)
+                    VideoService._create_karaoke_ass(
+                        cues,
+                        ass_path,
+                        (width, height),
+                        font_scale=1.35,
+                        caption_y_pct=caption_y_pct,
+                    )
                 else:
                     VideoService._create_burn_ass(cues, ass_path, (width, height), font_scale=1.45)
                 vf_parts.append(f"ass='{VideoService._ffmpeg_subtitle_path(ass_path)}'")
@@ -828,14 +859,16 @@ class VideoService:
         output_path: Path,
         aspect_ratio: str,
         branding,
+        layout=None,
     ) -> bool:
         """Composite optional header/footer text or logo strips onto finished video."""
-        from app.utils.studio_overlay import branding_active, render_branding_png
+        from app.utils.studio_overlay import StudioLayout, branding_active, render_branding_png
 
         if not branding_active(branding):
             shutil.copy2(video_path, output_path)
             return True
 
+        layout = layout or StudioLayout()
         width, height = VideoService._canvas_size(aspect_ratio)
         band_h = max(int(height * 0.11), 88)
         temp_dir = settings.TEMP_DIR / f"brand_{video_path.stem}"
@@ -857,7 +890,10 @@ class VideoService:
             ).save(header_png)
             inputs.extend(["-i", str(header_png)])
             out_label = f"v{input_index}"
-            filter_parts.append(f"[{stream_label}][{input_index}:v]overlay=0:0:format=auto[{out_label}]")
+            header_y = max(0, min(int(height * layout.header_y_pct / 100.0), height - band_h))
+            filter_parts.append(
+                f"[{stream_label}][{input_index}:v]overlay=0:{header_y}:format=auto[{out_label}]"
+            )
             stream_label = out_label
             input_index += 1
 
@@ -871,7 +907,7 @@ class VideoService:
                 position="footer",
             ).save(footer_png)
             inputs.extend(["-i", str(footer_png)])
-            y = height - band_h
+            y = max(0, min(int(height * layout.footer_y_pct / 100.0), height - band_h))
             out_label = f"v{input_index}"
             filter_parts.append(
                 f"[{stream_label}][{input_index}:v]overlay=0:{y}:format=auto[{out_label}]"

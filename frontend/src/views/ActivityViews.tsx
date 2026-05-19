@@ -13,6 +13,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/u
 import api from '@/lib/api';
 import { useJobEvents } from '@/lib/jobEvents';
 import { useI18n } from '@/i18n/I18nProvider';
+import { DeleteAllJobsButton } from '@/components/jobs/DeleteAllJobsButton';
 import {
   engineModeToPreset,
   presetToEngineMode,
@@ -66,6 +67,15 @@ interface SettingsResponse {
   };
   whisper_model: string;
   nllb_model: string;
+  llm_model: string;
+  llm_models: Array<{
+    id: string;
+    name: string;
+    tier: string;
+    best_for: string;
+    speed?: string;
+    provider: string;
+  }>;
   openai_api_key: string;
   anthropic_api_key: string;
   gemini_api_key: string;
@@ -112,6 +122,7 @@ function statusColor(status: string) {
 }
 
 export function HistoryView() {
+  const { t } = useI18n();
   const [jobs, setJobs] = useState<Job[]>([]);
   const [total, setTotal] = useState(0);
   const [isLoading, setIsLoading] = useState(true);
@@ -167,11 +178,14 @@ export function HistoryView() {
       <div className="flex items-center justify-between">
         <div>
           <h1 className="text-3xl font-bold mb-2">
-            <span className="bg-gradient-to-br from-blue-500 to-indigo-500 text-transparent bg-clip-text">Activity History</span>
+            <span className="bg-gradient-to-br from-blue-500 to-indigo-500 text-transparent bg-clip-text">
+              {t.history.title}
+            </span>
           </h1>
-          <p className="text-slate-400">Track all your dubbing jobs and their status.</p>
+          <p className="text-slate-400">{t.history.subtitle}</p>
         </div>
         <div className="flex items-center gap-3">
+          <DeleteAllJobsButton scope="all" variant="history" onDeleted={fetchJobs} />
           <Select value={statusFilter} onValueChange={(v) => { setStatusFilter(v); setOffset(0); }}>
             <SelectTrigger className="w-[140px] bg-white/5 border-white/10">
               <SelectValue placeholder="Filter" />
@@ -203,7 +217,7 @@ export function HistoryView() {
           ) : jobs.length === 0 ? (
             <div className="py-16 text-center text-slate-500">
               <HistoryIcon className="w-10 h-10 mx-auto mb-3 opacity-30" />
-              <p>No jobs found. Start a dubbing project from the Dashboard!</p>
+              <p>{t.history.empty}</p>
             </div>
           ) : (
             jobs.map((job, i) => (
@@ -341,6 +355,7 @@ export function SettingsView() {
   const [anthropicKey, setAnthropicKey] = useState("");
   const [geminiKey, setGeminiKey] = useState("");
   const [groqKey, setGroqKey] = useState("");
+  const [llmModel, setLlmModel] = useState("auto");
   const [processingPreset, setProcessingPreset] = useState<ProcessingPreset>('hybrid');
   const [saveWarning, setSaveWarning] = useState<string | null>(null);
 
@@ -355,6 +370,7 @@ export function SettingsView() {
           setAnthropicKey(response.data.anthropic_api_key || "");
           setGeminiKey(response.data.gemini_api_key || "");
           setGroqKey(response.data.groq_api_key || "");
+          setLlmModel(response.data.llm_model || "auto");
           setProcessingPreset(
             engineModeToPreset(response.data.processing_engine, response.data.processing_mode),
           );
@@ -378,6 +394,7 @@ export function SettingsView() {
         anthropic_api_key: anthropicKey,
         gemini_api_key: geminiKey,
         groq_api_key: groqKey,
+        llm_model: llmModel,
       });
       setSaveWarning(saveResponse.data.warning || null);
       // Refresh config from server to get masked values
@@ -387,6 +404,7 @@ export function SettingsView() {
       setAnthropicKey(response.data.anthropic_api_key || "");
       setGeminiKey(response.data.gemini_api_key || "");
       setGroqKey(response.data.groq_api_key || "");
+      setLlmModel(response.data.llm_model || "auto");
       setProcessingPreset(
         engineModeToPreset(response.data.processing_engine, response.data.processing_mode),
       );
@@ -527,6 +545,32 @@ export function SettingsView() {
             <div className="space-y-1">
               <Label className="text-[10px] uppercase text-slate-500">NLLB Translation</Label>
               <p className="text-sm font-semibold truncate">{config?.nllb_model}</p>
+            </div>
+            <div className="space-y-2 pt-2 border-t border-white/10">
+              <Label className="text-[10px] uppercase text-slate-500">{t.settings.llmModel}</Label>
+              <Select value={llmModel} onValueChange={setLlmModel} disabled={!isEditing}>
+                <SelectTrigger className="bg-black/20 border-white/10 text-xs">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent className="max-h-72">
+                  <SelectItem value="auto">Auto (first available key)</SelectItem>
+                  {(config?.llm_models || []).map((m) => (
+                    <SelectItem key={m.id} value={m.id}>
+                      {m.name} — {m.tier}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+              {(() => {
+                const sel = config?.llm_models?.find((m) => m.id === llmModel);
+                if (!sel) return <p className="text-[10px] text-slate-500">{t.settings.llmModelHint}</p>;
+                return (
+                  <p className="text-[10px] text-slate-400 leading-snug">
+                    <span className="text-cyan-300/90">{sel.tier}</span> · {sel.best_for}
+                    {sel.speed ? ` · ${sel.speed}` : ''}
+                  </p>
+                );
+              })()}
             </div>
           </CardContent>
         </Card>

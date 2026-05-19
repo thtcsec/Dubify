@@ -6,6 +6,7 @@ import { CheckCircle, XCircle, Loader2, Download, Ban, PauseCircle, Play } from 
 import api from '../lib/api';
 import { apiOrigin } from '../lib/api';
 import { Button } from './ui/button';
+import { VideoPlayer } from './VideoPlayer';
 import { useJobEvents } from '../lib/jobEvents';
 import { useI18n } from '@/i18n/I18nProvider';
 
@@ -238,12 +239,9 @@ export const DubbingProgress = ({ jobId, onComplete, onError }: DubbingProgressP
                     <span className="text-xs text-slate-500">{part.duration.toFixed(1)}s</span>
                   )}
                 </div>
-                <video
-                  controls
-                  preload="metadata"
-                  playsInline
-                  className="w-full max-h-64 rounded-lg bg-black"
+                <VideoPlayer
                   src={`${apiOrigin}${part.url}`}
+                  maxHeightClass="max-h-64"
                 />
                 <Button
                   variant="outline"
@@ -267,20 +265,12 @@ export const DubbingProgress = ({ jobId, onComplete, onError }: DubbingProgressP
 
         {isCompleted && data.output_path && (!data.parts || data.parts.length === 0) && (
           <div className="space-y-4 pt-4 border-t border-white/5">
-            <div
-              className="relative z-20 rounded-xl border border-white/10 bg-black shadow-lg"
-              onPointerDown={(e) => e.stopPropagation()}
-            >
-              <video
+            {outputFilename && (
+              <VideoPlayer
                 key={outputFilename}
-                controls
-                preload="auto"
-                playsInline
-                className="block w-full max-h-[min(70vh,560px)] bg-black"
-                style={{ pointerEvents: 'auto', touchAction: 'manipulation' }}
-                src={outputFilename ? `${apiOrigin}/storage/output/${outputFilename}` : undefined}
+                src={`${apiOrigin}/storage/output/${outputFilename}`}
               />
-            </div>
+            )}
             <Button className="w-full btn-glow bg-gradient-to-r from-indigo-600 to-purple-600 hover:from-indigo-500 hover:to-purple-500 text-white font-bold py-6 rounded-xl text-base shadow-[0_0_20px_rgba(79,70,229,0.3)] hover:shadow-[0_0_25px_rgba(79,70,229,0.5)] transition-all transform hover:-translate-y-0.5" onClick={() => {
               const filename = outputFilename;
               if (!filename) {

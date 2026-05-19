@@ -52,6 +52,9 @@ def build_html_scene_video(
     output_path: Path,
     aspect_ratio: str,
     template_name: str = "tiktok_news",
+    social_overlay: Optional[dict] = None,
+    studio_layout: Optional[dict] = None,
+    render_engine: str | None = None,
     progress_callback: Optional[Callable[[float], None]] = None,
 ) -> bool:
     scenes = parse_studio_scenes(script)
@@ -62,21 +65,35 @@ def build_html_scene_video(
     audio_duration = max(VideoService.get_duration(audio_path), 1.0)
     timed_scenes = _scene_timings_from_subtitles(scenes, subtitle_path, audio_duration)
     logger.info("Studio: %d scenes over %.1fs audio", len(timed_scenes), audio_duration)
-    renderer = StudioHtmlService(aspect_ratio=aspect_ratio, template_name=template_name)
+    from app.utils.studio_overlay import SocialOverlayConfig, parse_social_overlay, parse_studio_layout
+
+    overlay_cfg = (
+        parse_social_overlay(social_overlay)
+        if isinstance(social_overlay, dict)
+        else SocialOverlayConfig()
+    )
+    layout_cfg = (
+        parse_studio_layout(studio_layout, aspect_ratio=aspect_ratio)
+        if isinstance(studio_layout, dict)
+        else parse_studio_layout({}, aspect_ratio=aspect_ratio)
+    )
+    renderer = StudioHtmlService(
+        aspect_ratio=aspect_ratio,
+        template_name=template_name,
+        social_overlay=overlay_cfg,
+        render_engine=render_engine,
+        studio_layout=layout_cfg,
+    )
     temp_dir = settings.TEMP_DIR / f"studio_html_{output_path.stem}"
     temp_dir.mkdir(parents=True, exist_ok=True)
 
     scene_pngs: list[tuple[Path, float]] = []
     for index, scene in enumerate(timed_scenes):
         png_path = temp_dir / f"scene_{index:03d}.png"
-        from app.utils.script_split import split_spoken_lines
-
-        body = scene["body"] or scene["title"]
-        preview_lines = split_spoken_lines(body, max_chars=28)[:4]
-        preview_text = "\n".join(preview_lines) if preview_lines else scene_display_text(body)
+        # Visual = background + optional scene title only; speech text via karaoke ASS burn.
         ok = renderer.render_scene_png(
             title=scene["title"],
-            text=preview_text,
+            text="",
             image_path=image_path,
             output_png=png_path,
         )
@@ -101,6 +118,7 @@ def build_html_scene_video(
         aspect_ratio=aspect_ratio,
         progress_callback=progress_callback,
         fade_seconds=0.65,
-        burn_subtitles=False,
-        karaoke_subs=False,
+        burn_subtitles=True,
+        karaoke_subs=True,
+        caption_y_pct=layout_cfg.caption_y_pct,
     )

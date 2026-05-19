@@ -138,6 +138,20 @@ class BackgroundWorker:
         use_raw_script = bool(payload.get("use_raw_script", True))
         studio_visual_mode = (payload.get("studio_visual_mode") or "html_scenes").strip().lower()
         studio_template = (payload.get("studio_template") or "tiktok_news").strip()
+        studio_render_engine = (payload.get("studio_render_engine") or "auto").strip().lower()
+        social_overlay_payload = {
+            "social_overlay": payload.get("social_overlay", "none"),
+            "social_handle": payload.get("social_handle", ""),
+            "social_subtitle": payload.get("social_subtitle", ""),
+            "social_avatar_path": payload.get("social_avatar_path"),
+        }
+        studio_layout_payload = {
+            "header_y_pct": payload.get("header_y_pct"),
+            "footer_y_pct": payload.get("footer_y_pct"),
+            "social_left_pct": payload.get("social_left_pct"),
+            "social_bottom_pct": payload.get("social_bottom_pct"),
+            "caption_y_pct": payload.get("caption_y_pct"),
+        }
 
         from app.utils.studio_background import ensure_studio_background
 
@@ -212,6 +226,9 @@ class BackgroundWorker:
                     output_path=output_path,
                     aspect_ratio=aspect_ratio,
                     template_name=studio_template,
+                    social_overlay=social_overlay_payload,
+                    studio_layout=studio_layout_payload,
+                    render_engine=studio_render_engine,
                     progress_callback=update_render_progress,
                 )
                 if not success:
@@ -229,13 +246,14 @@ class BackgroundWorker:
                 )
 
             if success:
-                from app.utils.studio_overlay import branding_active, parse_studio_branding
+                from app.utils.studio_overlay import branding_active, parse_studio_branding, parse_studio_layout
 
                 branding = parse_studio_branding(payload)
+                layout = parse_studio_layout(payload, aspect_ratio=aspect_ratio)
                 if branding_active(branding):
                     branded = settings.TEMP_DIR / f"{job_id}_branded.mp4"
                     if VideoService.apply_studio_branding(
-                        output_path, branded, aspect_ratio, branding
+                        output_path, branded, aspect_ratio, branding, layout
                     ):
                         shutil.move(str(branded), str(output_path))
                 job_manager.update_job(job_id, JobStatus.COMPLETED, output_path=str(output_path), progress=100)

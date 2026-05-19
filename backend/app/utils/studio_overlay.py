@@ -1,13 +1,15 @@
-"""Header/footer branding overlays for Studio videos."""
+"""Header/footer branding and HyperFrames-inspired social overlays for Studio."""
 
 from __future__ import annotations
 
-import re
+import html
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any, Optional
+from typing import Any, Literal, Optional
 
 from PIL import Image, ImageDraw, ImageFont
+
+SocialOverlayPreset = Literal["none", "tiktok_follow", "yt_lower_third"]
 
 
 @dataclass
@@ -22,6 +24,41 @@ class BrandingBand:
 class StudioBranding:
     header: BrandingBand
     footer: BrandingBand
+
+
+@dataclass
+class StudioLayout:
+    """Percent-based overlay positions (synced with frontend StudioLayoutPreview)."""
+
+    header_y_pct: float = 0.0
+    footer_y_pct: float = 89.0
+    social_left_pct: float = 4.4
+    social_bottom_pct: float = 6.25
+    caption_y_pct: float = 64.0
+
+
+def _pct(value: Any, default: float) -> float:
+    try:
+        return float(value)
+    except (TypeError, ValueError):
+        return default
+
+
+def parse_studio_layout(payload: dict[str, Any], *, aspect_ratio: str = "9:16") -> StudioLayout:
+    parts = (aspect_ratio or "9:16").split(":")
+    portrait = len(parts) == 2 and parts[0].isdigit() and parts[1].isdigit() and int(parts[1]) > int(parts[0])
+    defaults = StudioLayout(
+        footer_y_pct=89.0 if portrait else 88.0,
+        social_bottom_pct=6.25 if portrait else 5.0,
+        caption_y_pct=64.0 if portrait else 78.0,
+    )
+    return StudioLayout(
+        header_y_pct=max(0.0, min(_pct(payload.get("header_y_pct"), defaults.header_y_pct), 30.0)),
+        footer_y_pct=max(50.0, min(_pct(payload.get("footer_y_pct"), defaults.footer_y_pct), 95.0)),
+        social_left_pct=max(0.0, min(_pct(payload.get("social_left_pct"), defaults.social_left_pct), 80.0)),
+        social_bottom_pct=max(1.0, min(_pct(payload.get("social_bottom_pct"), defaults.social_bottom_pct), 45.0)),
+        caption_y_pct=max(35.0, min(_pct(payload.get("caption_y_pct"), defaults.caption_y_pct), 85.0)),
+    )
 
 
 def parse_studio_branding(payload: dict[str, Any]) -> StudioBranding:
@@ -131,3 +168,87 @@ def render_branding_png(
 
 def branding_active(branding: StudioBranding) -> bool:
     return branding.header.enabled or branding.footer.enabled
+
+
+@dataclass
+class SocialOverlayConfig:
+    preset: SocialOverlayPreset = "none"
+    handle: str = ""
+    subtitle: str = ""
+    avatar_url: Optional[str] = None
+
+
+def parse_social_overlay(payload: dict[str, Any]) -> SocialOverlayConfig:
+    raw = str(payload.get("social_overlay") or "none").strip().lower()
+    preset: SocialOverlayPreset = (
+        raw if raw in ("none", "tiktok_follow", "yt_lower_third") else "none"
+    )
+    handle = str(payload.get("social_handle") or payload.get("social_overlay_handle") or "").strip()
+    subtitle = str(payload.get("social_subtitle") or "").strip()
+    avatar_key = payload.get("social_avatar_path")
+    avatar_path = Path(avatar_key) if avatar_key else None
+    if avatar_path and not avatar_path.exists():
+        avatar_path = None
+    if preset != "none" and not handle and preset == "tiktok_follow":
+        handle = "@dubify"
+    if preset == "yt_lower_third" and not subtitle:
+        subtitle = "Subscribe for more"
+    return SocialOverlayConfig(
+        preset=preset,
+        handle=handle,
+        subtitle=subtitle,
+        avatar_url=avatar_path.resolve().as_uri() if avatar_path else None,
+    )
+
+
+def social_overlay_html(
+    config: SocialOverlayConfig,
+    layout: StudioLayout | None = None,
+) -> str:
+    """HTML snippet injected into studio templates ({SOCIAL_OVERLAY})."""
+    if config.preset == "none":
+        return ""
+
+    layout = layout or StudioLayout()
+    pos_style = (
+        f"left:{layout.social_left_pct:.2f}%;bottom:{layout.social_bottom_pct:.2f}%;"
+        "right:auto;top:auto;"
+    )
+
+    if config.preset == "tiktok_follow":
+        handle = html.escape(config.handle or "@channel")
+        avatar = config.avatar_url or ""
+        avatar_block = (
+            f'<img class="tt-avatar" src="{html.escape(avatar, quote=True)}" alt=""/>'
+            if avatar
+            else '<div class="tt-avatar tt-avatar-fallback"></div>'
+        )
+        return f"""
+<div class="social-overlay tiktok-follow" style="{pos_style}" aria-hidden="true">
+  {avatar_block}
+  <div class="tt-meta">
+    <span class="tt-handle">{handle}</span>
+    <span class="tt-follow-btn">Follow</span>
+  </div>
+</div>""".strip()
+
+    if config.preset == "yt_lower_third":
+        title = html.escape(config.handle or "Dubify Channel")
+        sub = html.escape(config.subtitle or "Subscribe")
+        avatar = config.avatar_url or ""
+        avatar_block = (
+            f'<img class="yt-avatar" src="{html.escape(avatar, quote=True)}" alt=""/>'
+            if avatar
+            else '<div class="yt-avatar yt-avatar-fallback"></div>'
+        )
+        return f"""
+<div class="social-overlay yt-lower-third" style="{pos_style}" aria-hidden="true">
+  {avatar_block}
+  <div class="yt-text">
+    <span class="yt-channel">{title}</span>
+    <span class="yt-subline">{sub}</span>
+  </div>
+  <span class="yt-subscribe">Subscribe</span>
+</div>""".strip()
+
+    return ""

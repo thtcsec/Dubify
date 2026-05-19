@@ -94,6 +94,11 @@ async def create_studio_video(
     use_raw_script: bool = Form(True),
     studio_visual_mode: str = Form("html_scenes"),
     studio_template: str = Form("tiktok_news"),
+    studio_render_engine: str = Form("auto"),
+    social_overlay: str = Form("none"),
+    social_handle: str = Form(""),
+    social_subtitle: str = Form(""),
+    social_avatar: Optional[UploadFile] = File(None),
     header_enabled: bool = Form(False),
     header_text: str = Form(""),
     header_opacity: float = Form(0.85),
@@ -102,6 +107,11 @@ async def create_studio_video(
     footer_text: str = Form(""),
     footer_opacity: float = Form(0.85),
     footer_image: Optional[UploadFile] = File(None),
+    header_y_pct: float = Form(0.0),
+    footer_y_pct: float = Form(89.0),
+    social_left_pct: float = Form(4.4),
+    social_bottom_pct: float = Form(6.25),
+    caption_y_pct: float = Form(64.0),
 ):
     """Create a studio video from script; background image is optional (gradient if omitted)."""
     # Input validation
@@ -138,6 +148,17 @@ async def create_studio_video(
             shutil.copyfileobj(footer_image.file, buffer)
         footer_image_path = str(saved)
 
+    social_avatar_path: str | None = None
+    if social_avatar is not None and social_avatar.filename:
+        saved = settings.INPUT_DIR / f"{job_id}_social_{Path(social_avatar.filename).name}"
+        with open(saved, "wb") as buffer:
+            shutil.copyfileobj(social_avatar.file, buffer)
+        social_avatar_path = str(saved)
+
+    allowed_templates = {"tiktok_news", "tiktok_news_pill", "news_scene", "pixelle_story"}
+    if studio_template not in allowed_templates:
+        studio_template = "tiktok_news"
+
     worker.add_job(job_id, {
         "type": JobType.STUDIO,
         "image_path": image_path,
@@ -149,6 +170,11 @@ async def create_studio_video(
         "use_raw_script": use_raw_script,
         "studio_visual_mode": studio_visual_mode,
         "studio_template": studio_template,
+        "studio_render_engine": studio_render_engine,
+        "social_overlay": social_overlay.strip().lower(),
+        "social_handle": social_handle.strip(),
+        "social_subtitle": social_subtitle.strip(),
+        "social_avatar_path": social_avatar_path,
         "header_enabled": header_enabled,
         "header_text": header_text.strip(),
         "header_opacity": header_opacity,
@@ -157,6 +183,11 @@ async def create_studio_video(
         "footer_text": footer_text.strip(),
         "footer_opacity": footer_opacity,
         "footer_image_path": footer_image_path,
+        "header_y_pct": header_y_pct,
+        "footer_y_pct": footer_y_pct,
+        "social_left_pct": social_left_pct,
+        "social_bottom_pct": social_bottom_pct,
+        "caption_y_pct": caption_y_pct,
     })
 
     return {"job_id": job_id}
@@ -517,20 +548,62 @@ async def resume_job(job_id: str):
 @router.delete("/jobs/{job_id}")
 async def delete_job(job_id: str):
     """Delete a completed/failed/cancelled job from history."""
+    from app.utils.job_storage import remove_job_storage
+
     job = job_manager.get_job(job_id)
     if not job:
         raise HTTPException(status_code=404, detail="Job not found")
     if job["status"] in (JobStatus.PROCESSING, JobStatus.PENDING, JobStatus.PAUSED):
         raise HTTPException(status_code=400, detail="Cannot delete an active job. Cancel it first.")
     job_manager.delete_job(job_id)
-    remove_job_artifacts(job_id)
+    remove_job_storage(job_id, job)
     logger.info(f"Job {job_id} deleted by user.")
     return {"status": "deleted", "job_id": job_id}
+
+
+@router.delete("/jobs")
+async def delete_all_jobs(
+    confirm: str = Query(..., description='Must be exactly "DELETE_ALL"'),
+    scope: str = Query("all", description='all = every job; completed = finished outputs only'),
+):
+    """Purge jobs and related storage (artifacts, temp, clips, inputs, outputs)."""
+    from app.utils.job_storage import remove_job_storage
+
+    if confirm != "DELETE_ALL":
+        raise HTTPException(status_code=400, detail='Confirmation phrase must be DELETE_ALL')
+
+    scope_norm = (scope or "all").strip().lower()
+    if scope_norm not in ("all", "completed"):
+        raise HTTPException(status_code=400, detail="scope must be all or completed")
+
+    removed_items = job_manager.purge_jobs(scope=scope_norm)
+    for job_id, job in removed_items:
+        remove_job_storage(job_id, job)
+
+    logger.info("Purged %s jobs (scope=%s)", len(removed_items), scope_norm)
+    return {"status": "purged", "removed": len(removed_items), "scope": scope_norm}
 
 
 @router.get("/voices")
 async def list_voices():
     return voices_payload()
+
+
+@router.post("/studio/rewrite-script")
+async def rewrite_studio_script(
+    text: str = Form(...),
+    target_lang: str = Form("vi"),
+):
+    """Rewrite notes into scene-based script with [STAT]/[DEF] popup markers."""
+    from app.services.script_service import ScriptService
+
+    if len(text) > MAX_TEXT_LENGTH:
+        raise HTTPException(status_code=400, detail=f"Text too long. Maximum {MAX_TEXT_LENGTH} characters.")
+    try:
+        script = ScriptService.rewrite_studio_script(text, target_lang)
+        return {"script": script}
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
 
 
 @router.post("/voice-preview")
@@ -602,6 +675,8 @@ async def get_settings():
         },
         "whisper_model": settings.DEFAULT_WHISPER_MODEL,
         "nllb_model": settings.DEFAULT_NLLB_MODEL,
+        "llm_model": (settings.LLM_MODEL or "auto").strip(),
+        "llm_models": __import__("app.services.llm_models", fromlist=["LLM_MODEL_CATALOG"]).LLM_MODEL_CATALOG,
         "openai_api_key": mask_api_key(settings.OPENAI_API_KEY),
         "anthropic_api_key": mask_api_key(settings.ANTHROPIC_API_KEY),
         "gemini_api_key": mask_api_key(settings.GEMINI_API_KEY),
@@ -619,6 +694,7 @@ async def get_settings():
 class SettingsUpdate(BaseModel):
     processing_engine: Optional[str] = None
     processing_mode: Optional[str] = None
+    llm_model: Optional[str] = None
     openai_api_key: Optional[str] = None
     anthropic_api_key: Optional[str] = None
     gemini_api_key: Optional[str] = None
@@ -648,6 +724,11 @@ async def update_settings(data: SettingsUpdate):
                 raise HTTPException(status_code=400, detail="processing_mode must be 'offline', 'hybrid', or 'online'")
             set_key(env_path, "PROCESSING_MODE", normalized_mode)
             settings.PROCESSING_MODE = normalized_mode
+
+        if data.llm_model is not None:
+            model_id = (data.llm_model or "auto").strip()
+            set_key(env_path, "LLM_MODEL", model_id)
+            settings.LLM_MODEL = model_id
 
         if data.openai_api_key is not None:
             set_key(env_path, "OPENAI_API_KEY", data.openai_api_key)

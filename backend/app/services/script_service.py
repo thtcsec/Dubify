@@ -19,28 +19,14 @@ class ScriptService:
         if not text:
             raise ValueError("Script is empty.")
 
-        if use_raw_script:
-            logger.info("Studio: using verbatim script (%d chars).", len(text))
-            return text
+        logger.info("Studio: using submitted script (%d chars).", len(text))
+        return text
 
-        logger.info("Studio: rewriting script with LLM (target_lang=%s).", target_lang)
-        if not LLMService.llm_available():
-            ollama_out = LLMService._try_ollama_rewrite(text, target_lang)
-            if ollama_out:
-                return ollama_out
-            raise ValueError(
-                "Không viết lại được kịch bản: cần API key (Groq/OpenAI/Gemini trong .env) "
-                "hoặc Ollama chạy tại " + settings.OLLAMA_API_BASE
-            )
-
-        rewritten = LLMService.generate_news_script(
-            text, target_lang, studio_rewrite=True
-        ).strip()
-        if not rewritten or rewritten == text:
-            raise ValueError(
-                "AI không đổi kịch bản (trả về giống bản gốc). Kiểm tra API key hoặc thử Ollama."
-            )
-        logger.info("Studio: script rewritten (%d -> %d chars).", len(text), len(rewritten))
+    @staticmethod
+    def rewrite_studio_script(raw_text: str, target_lang: str) -> str:
+        """On-demand AI rewrite (Studio button) — not used during render unless text was replaced."""
+        rewritten = LLMService.rewrite_studio_script(raw_text, target_lang)
+        logger.info("Studio: AI rewrite (%d -> %d chars).", len(raw_text), len(rewritten))
         return rewritten
 
     @staticmethod

@@ -10,6 +10,7 @@ import {
   Clapperboard,
   Wand2,
   Languages,
+  LayoutTemplate,
 } from 'lucide-react';
 import { Button } from '../components/ui/button';
 import { useI18n } from '@/i18n/I18nProvider';
@@ -27,6 +28,8 @@ const NAV_SECONDARY = [
   { id: 'settings', icon: Settings },
   { id: 'help', icon: HelpCircle },
 ] as const;
+
+const NAV_BOTTOM = [{ id: 'brandLayout', icon: LayoutTemplate }] as const;
 
 interface AppSidebarProps {
   currentView: string;
@@ -153,6 +156,37 @@ export function AppSidebar({ currentView, onViewChange, isCollapsed, onToggleCol
               <span className="text-sm">{locale === 'vi' ? t.common.vietnamese : t.common.english}</span>
             )}
           </Button>
+
+          {NAV_BOTTOM.map((item) => {
+            const Icon = item.icon;
+            return (
+              <Button
+                key={item.id}
+                variant="ghost"
+                onClick={() => onViewChange(item.id)}
+                className={`group relative h-11 w-full justify-start gap-3 rounded-xl border-0 overflow-hidden transition-all duration-300 ${
+                  currentView === item.id ? 'text-white' : 'text-slate-400 hover:text-white'
+                } ${isCollapsed ? 'px-2' : 'px-4'}`}
+              >
+                <div
+                  className={`absolute inset-0 transition-opacity duration-300 ${
+                    currentView === item.id
+                      ? 'bg-gradient-to-r from-cyan-500/20 to-indigo-500/20 opacity-100'
+                      : 'bg-white/5 opacity-0 group-hover:opacity-100'
+                  }`}
+                />
+                {currentView === item.id && (
+                  <div className="absolute left-0 top-1/4 bottom-1/4 w-1 bg-gradient-to-b from-cyan-400 to-indigo-400 rounded-r-full shadow-[0_0_10px_rgba(34,211,238,0.6)]" />
+                )}
+                <Icon
+                  className={`relative z-10 h-5 w-5 shrink-0 transition-transform duration-300 group-hover:scale-110 ${
+                    currentView === item.id ? 'text-cyan-400' : ''
+                  }`}
+                />
+                {!isCollapsed && <span className="relative z-10 font-medium">{navTitle(item.id)}</span>}
+              </Button>
+            );
+          })}
         </div>
       </div>
     </aside>

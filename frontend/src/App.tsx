@@ -8,6 +8,7 @@ import { isTimeoutError, extractApiErrorMessage } from './lib/errors';
 // Views
 import { DashboardView } from './views/DashboardView';
 import { StudioView } from './views/StudioView';
+import { BrandLayoutView } from './views/BrandLayoutView';
 import { StudioEditorView } from './views/StudioEditorView';
 import { ShortsView } from './views/ShortsView';
 import { ProjectsView } from './views/ProjectsView';
@@ -116,11 +117,14 @@ export default function App() {
             resetProject={resetProject}
           />
         );
+      case 'brandLayout':
+        return <BrandLayoutView />;
       case 'studio':
         return (
           <StudioView
             targetLang={targetLang}
             setTargetLang={setTargetLang}
+            onOpenBrandLayout={() => setCurrentView('brandLayout')}
           />
         );
       case 'shorts':

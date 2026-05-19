@@ -3,51 +3,40 @@ import { motion, AnimatePresence } from 'framer-motion';
 import { Button } from '../components/ui/button';
 import { Label } from '../components/ui/label';
 import { Textarea } from '../components/ui/textarea';
-import { Input } from '../components/ui/input';
 import { Select, SelectContent, SelectGroup, SelectItem, SelectLabel, SelectTrigger, SelectValue } from '../components/ui/select';
-import { Switch } from '../components/ui/switch';
 import { DubbingProgress } from '../components/DubbingProgress';
 import { isTimeoutError, extractApiErrorMessage } from '../lib/errors';
 import api from '../lib/api';
 import { useI18n } from '@/i18n/I18nProvider';
-import { StudioScenePreview } from '@/components/studio/StudioScenePreview';
+import { appendStudioBrandToFormData, studioBrandStore, useDefaultAspectRatio, useStudioBrand } from '@/lib/studioBrandStore';
+import { ASPECT_RATIO_OPTIONS, type AspectRatioValue } from '@/lib/aspectRatios';
 import { parseVoicesResponse, type Voice } from '@/lib/voices';
-
-const ASPECT_RATIO_OPTIONS = [
-  { value: '16:9', label: '16:9 Landscape' },
-  { value: '4:3', label: '4:3 Classic' },
-  { value: '9:16', label: '9:16 Vertical' },
-  { value: '3:4', label: '3:4 Portrait' },
-  { value: '1:1', label: '1:1 Square' },
-];
+import { StudioLayoutPreview } from '@/components/studio/StudioLayoutPreview';
+import { Wand2, LayoutTemplate, Eye } from 'lucide-react';
 
 interface StudioViewProps {
   targetLang: string;
   setTargetLang: (lang: string) => void;
+  onOpenBrandLayout?: () => void;
 }
 
-export function StudioView({ targetLang, setTargetLang }: StudioViewProps) {
+export function StudioView({ targetLang, setTargetLang, onOpenBrandLayout }: StudioViewProps) {
   const { t } = useI18n();
   const [jobId, setJobId] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   
   const [newsText, setNewsText] = useState('');
-  const [imageFile, setImageFile] = useState<File | null>(null);
-  const [imagePreview, setImagePreview] = useState<string>('');
-  const [imageUrl, setImageUrl] = useState<string | null>(null);
-  const [isDragOver, setIsDragOver] = useState(false);
-  const [aspectRatio, setAspectRatio] = useState('16:9');
-  const [useRawScript, setUseRawScript] = useState(true);
+  const defaultAspect = useDefaultAspectRatio();
+  const { brand, setLayout, socialAvatarPreview } = useStudioBrand();
+  const [aspectRatio, setAspectRatio] = useState<AspectRatioValue>(defaultAspect);
+
+  useEffect(() => {
+    setAspectRatio(defaultAspect);
+  }, [defaultAspect]);
   const [studioVisualMode, setStudioVisualMode] = useState<'html_scenes' | 'classic'>('html_scenes');
-  const [headerEnabled, setHeaderEnabled] = useState(false);
-  const [headerText, setHeaderText] = useState('');
-  const [headerOpacity, setHeaderOpacity] = useState(85);
-  const [headerImage, setHeaderImage] = useState<File | null>(null);
-  const [footerEnabled, setFooterEnabled] = useState(false);
-  const [footerText, setFooterText] = useState('');
-  const [footerOpacity, setFooterOpacity] = useState(85);
-  const [footerImage, setFooterImage] = useState<File | null>(null);
+  const [studioRenderEngine, setStudioRenderEngine] = useState<'auto' | 'playwright' | 'hyperframes'>('auto');
+  const [isRewriting, setIsRewriting] = useState(false);
 
   // Voice
   const [voices, setVoices] = useState<Voice[]>([]);
@@ -89,68 +78,6 @@ export function StudioView({ targetLang, setTargetLang }: StudioViewProps) {
     }
   };
 
-  const handleImageUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
-    if (e.target.files && e.target.files.length > 0) {
-      applyImageFile(e.target.files[0]);
-    }
-  };
-
-  const applyImageFile = (file: File) => {
-    setImageFile(file);
-    setImageUrl(null);
-    setImagePreview(URL.createObjectURL(file));
-    setError(null);
-  };
-
-  const applyRemoteImage = (url: string) => {
-    setImageFile(null);
-    setImageUrl(url);
-    setImagePreview(url);
-    setError(null);
-  };
-
-  const tryExtractImageUrl = (dataTransfer: DataTransfer): string | null => {
-    const uriList = dataTransfer.getData('text/uri-list');
-    if (uriList) {
-      const firstUrl = uriList.split('\n').map((item) => item.trim()).find((item) => item && !item.startsWith('#'));
-      if (firstUrl) return firstUrl;
-    }
-
-    const plainText = dataTransfer.getData('text/plain').trim();
-    if (/^https?:\/\//i.test(plainText)) {
-      return plainText;
-    }
-
-    const html = dataTransfer.getData('text/html');
-    if (html) {
-      const match = html.match(/<img[^>]+src=["']([^"']+)["']/i);
-      if (match?.[1]) {
-        return match[1];
-      }
-    }
-
-    return null;
-  };
-
-  const handleDrop = (event: React.DragEvent<HTMLDivElement>) => {
-    event.preventDefault();
-    setIsDragOver(false);
-
-    const file = Array.from(event.dataTransfer.files).find((item) => item.type.startsWith('image/'));
-    if (file) {
-      applyImageFile(file);
-      return;
-    }
-
-    const droppedUrl = tryExtractImageUrl(event.dataTransfer);
-    if (droppedUrl) {
-      applyRemoteImage(droppedUrl);
-      return;
-    }
-
-    setError('Please drop an image file or an online image URL.');
-  };
-
   const handleGenerate = async () => {
     if (!newsText.trim()) {
         setError(t.studio.needScript);
@@ -161,33 +88,17 @@ export function StudioView({ targetLang, setTargetLang }: StudioViewProps) {
     setError(null);
     const formData = new FormData();
     formData.append('text', newsText);
-    if (imageFile) {
-      formData.append('image', imageFile);
-    }
-    if (imageUrl) {
-      formData.append('image_url', imageUrl);
-    }
     formData.append('target_lang', targetLang);
     formData.append('voice_id', selectedVoice);
     formData.append('aspect_ratio', aspectRatio);
-    formData.append('use_raw_script', useRawScript ? 'true' : 'false');
+    formData.append('use_raw_script', 'true');
     if (manualDuration !== null && manualDuration > 0) {
       formData.append('duration_seconds', String(manualDuration));
     }
     formData.append('studio_visual_mode', studioVisualMode);
-    formData.append('studio_template', 'tiktok_news');
-    formData.append('header_enabled', headerEnabled ? 'true' : 'false');
-    formData.append('footer_enabled', footerEnabled ? 'true' : 'false');
-    if (headerEnabled) {
-      formData.append('header_text', headerText);
-      formData.append('header_opacity', String(headerOpacity / 100));
-      if (headerImage) formData.append('header_image', headerImage);
-    }
-    if (footerEnabled) {
-      formData.append('footer_text', footerText);
-      formData.append('footer_opacity', String(footerOpacity / 100));
-      if (footerImage) formData.append('footer_image', footerImage);
-    }
+    formData.append('studio_template', studioBrandStore.getState().studioTemplate);
+    formData.append('studio_render_engine', studioRenderEngine);
+    appendStudioBrandToFormData(formData);
 
     try {
       const response = await api.post('/studio', formData);
@@ -203,95 +114,44 @@ export function StudioView({ targetLang, setTargetLang }: StudioViewProps) {
     }
   };
 
+  const handleAiRewrite = async () => {
+    if (!newsText.trim()) {
+      setError(t.studio.needScript);
+      return;
+    }
+    setIsRewriting(true);
+    setError(null);
+    try {
+      const formData = new FormData();
+      formData.append('text', newsText);
+      formData.append('target_lang', targetLang);
+      const res = await api.post('/studio/rewrite-script', formData);
+      setNewsText(res.data.script || newsText);
+    } catch (err) {
+      setError(extractApiErrorMessage(err, 'AI rewrite failed.'));
+    } finally {
+      setIsRewriting(false);
+    }
+  };
+
   const resetStudio = () => {
     setJobId(null);
     setNewsText('');
-    setImageFile(null);
-    setImageUrl(null);
-    setImagePreview('');
-    setAspectRatio('16:9');
+    setAspectRatio(defaultAspect);
     setError(null);
     setManualDuration(null);
-    setHeaderEnabled(false);
-    setHeaderText('');
-    setHeaderOpacity(85);
-    setHeaderImage(null);
-    setFooterEnabled(false);
-    setFooterText('');
-    setFooterOpacity(85);
-    setFooterImage(null);
+    setStudioRenderEngine('auto');
     if (audioRef.current) audioRef.current.pause();
   };
-
-  const renderBrandingBand = (
-    id: 'header' | 'footer',
-    enabled: boolean,
-    setEnabled: (v: boolean) => void,
-    text: string,
-    setText: (v: string) => void,
-    opacity: number,
-    setOpacity: (v: number) => void,
-    image: File | null,
-    setImage: (f: File | null) => void,
-    label: string,
-  ) => (
-    <motion.div
-      key={id}
-      initial={false}
-      animate={{ opacity: enabled ? 1 : 0.65 }}
-      className="rounded-xl border border-white/10 bg-black/30 p-4 space-y-3"
-    >
-      <motion.div layout className="flex items-center justify-between gap-3">
-        <p className="text-sm font-medium text-slate-200">{label}</p>
-        <Switch checked={enabled} onCheckedChange={setEnabled} />
-      </motion.div>
-      {enabled && (
-        <motion.div layout initial={{ opacity: 0, height: 0 }} animate={{ opacity: 1, height: 'auto' }} className="space-y-3">
-          <Input
-            value={text}
-            onChange={(e) => setText(e.target.value)}
-            placeholder={t.studio.brandingTextPlaceholder}
-            className="bg-black/40 border-white/10 h-10 rounded-lg"
-          />
-          <motion.div layout className="space-y-1.5">
-            <Label className="text-xs text-slate-500">{t.studio.brandingLogo}</Label>
-            <Input
-              type="file"
-              accept="image/*"
-              className="bg-black/40 border-white/10 text-xs file:mr-3 file:rounded-md file:border-0 file:bg-indigo-500/20 file:px-3 file:py-1.5 file:text-indigo-200"
-              onChange={(e) => setImage(e.target.files?.[0] ?? null)}
-            />
-            {image && <p className="text-[11px] text-slate-500 truncate">{image.name}</p>}
-          </motion.div>
-          <motion.div layout className="space-y-1.5">
-            <motion.div className="flex justify-between text-xs text-slate-500">
-              <span>{t.studio.brandingOpacity}</span>
-              <span>{opacity}%</span>
-            </motion.div>
-            <input
-              type="range"
-              min={5}
-              max={100}
-              value={opacity}
-              onChange={(e) => setOpacity(Number(e.target.value))}
-              className="w-full accent-indigo-500"
-            />
-          </motion.div>
-        </motion.div>
-      )}
-    </motion.div>
-  );
 
   const voiceList = useMemo(() => parseVoicesResponse(voices), [voices]);
   const viVoices = voiceList.filter((v) => v.category === 'vi' || (!v.category && v.lang === 'vi'));
   const enVoices = voiceList.filter((v) => v.category === 'en' || (!v.category && v.lang === 'en'));
   const otherVoices = voiceList.filter((v) => v.category === 'other' || (!v.category && v.lang !== 'vi' && v.lang !== 'en'));
-  const previewAspectRatio = aspectRatio.replace(':', ' / ');
-  const previewFrameClass = aspectRatio === '9:16' || aspectRatio === '3:4'
-    ? 'max-w-[420px]'
-    : aspectRatio === '1:1'
-      ? 'max-w-[540px]'
-      : 'max-w-[760px]';
+  const aspectLabel = (value: string) => {
+    const key = value.replace(':', '_') as '16_9' | '9_16' | '4_3' | '3_4' | '1_1';
+    return t.brandLayout.ratios[key] ?? value;
+  };
 
   return (
     <>
@@ -337,13 +197,25 @@ export function StudioView({ targetLang, setTargetLang }: StudioViewProps) {
                           </span>
                         )}
                       </div>
-                      <div className="flex items-center justify-between rounded-xl border border-white/10 bg-black/30 px-4 py-3 mb-4">
-                        <div>
-                          <p className="text-sm font-medium text-slate-200">{t.studio.useRawScript}</p>
-                          <p className="text-xs text-slate-500 mt-0.5">{t.studio.useRawScriptHint}</p>
-                        </div>
-                        <Switch checked={useRawScript} onCheckedChange={setUseRawScript} />
-                      </div>
+                      <motion.div className="flex flex-wrap gap-2 mb-3">
+                        <Button
+                          type="button"
+                          variant="outline"
+                          className="border-purple-500/40 bg-purple-500/10 text-purple-100"
+                          disabled={isRewriting || !newsText.trim()}
+                          onClick={() => void handleAiRewrite()}
+                        >
+                          <Wand2 className="w-4 h-4 mr-2" />
+                          {isRewriting ? t.studio.aiRewriting : t.studio.aiRewrite}
+                        </Button>
+                        {onOpenBrandLayout && (
+                          <Button type="button" variant="outline" onClick={onOpenBrandLayout}>
+                            <LayoutTemplate className="w-4 h-4 mr-2" />
+                            {t.studio.openBrandLayout}
+                          </Button>
+                        )}
+                      </motion.div>
+                      <p className="text-[11px] text-slate-500 mb-3">{t.studio.aiRewriteHint}</p>
                       <Textarea 
                         placeholder={t.studio.scriptPlaceholder}
                         className="min-h-[180px] bg-black/40 border-white/5 focus:border-indigo-500/50 rounded-xl transition-all resize-none text-base placeholder:text-slate-600 focus:ring-1 focus:ring-indigo-500/50"
@@ -353,67 +225,54 @@ export function StudioView({ targetLang, setTargetLang }: StudioViewProps) {
                     </div>
                   </div>
 
+
+                </div>
+                <div className="lg:col-span-5 space-y-6">
                   <div className="relative group">
-                    <div className="absolute -inset-0.5 bg-gradient-to-r from-blue-500/20 to-cyan-500/20 rounded-2xl blur opacity-0 group-hover:opacity-100 transition duration-500"></div>
-                    <div className="relative bg-slate-900/80 backdrop-blur-xl border border-white/10 rounded-2xl p-6 shadow-2xl">
-                      <Label className="text-lg font-bold mb-4 flex items-center gap-2">
-                        <span className="bg-blue-500/20 text-blue-400 p-1.5 rounded-lg">
-                          <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" /></svg>
-                        </span>
-                        {t.studio.backgroundLabel}
-                      </Label>
-                      <p className="text-xs text-slate-500 mb-3">{t.studio.backgroundOptional}</p>
-                      <div
-                        className="relative"
-                        onDragOver={(event) => {
-                          event.preventDefault();
-                          setIsDragOver(true);
-                        }}
-                        onDragLeave={() => setIsDragOver(false)}
-                        onDrop={handleDrop}
-                      >
-                          {imagePreview ? (
-                              <div
-                                className={`relative mx-auto w-full rounded-xl overflow-hidden border-2 bg-black ${previewFrameClass} ${isDragOver ? 'border-blue-400 ring-4 ring-blue-500/30' : 'border-white/10'}`}
-                                style={{ aspectRatio: previewAspectRatio }}
-                              >
-                                  <img src={imagePreview} alt="Background" className="w-full h-full object-cover opacity-90 transition-transform duration-700 hover:scale-105" />
-                                  <div className="absolute inset-0 flex items-center justify-center bg-black/60 opacity-0 hover:opacity-100 transition-opacity backdrop-blur-sm">
-                                      <div className="flex flex-col items-center gap-4">
-                                        <Label htmlFor="image-upload" className="cursor-pointer bg-white/10 hover:bg-white/20 backdrop-blur-md px-6 py-3 rounded-xl text-white font-semibold transition-all hover:scale-105 border border-white/20 shadow-xl">
-                                            Replace Image
-                                        </Label>
-                                        {imageUrl && (
-                                          <span className="max-w-[80%] truncate text-xs text-slate-300 bg-black/50 px-3 py-1 rounded-full border border-white/10">
-                                            URL: {imageUrl}
-                                          </span>
-                                        )}
-                                      </div>
-                                  </div>
-                              </div>
-                          ) : (
-                              <Label 
-                                  htmlFor="image-upload" 
-                                  className={`mx-auto flex w-full flex-col items-center justify-center border-2 border-dashed rounded-xl bg-black/40 transition-all duration-300 cursor-pointer group ${previewFrameClass} ${
-                                    isDragOver ? 'border-blue-400 bg-blue-900/20 scale-[1.02]' : 'border-white/20 hover:bg-white/5 hover:border-blue-500/50'
-                                  }`}
-                                  style={{ aspectRatio: previewAspectRatio }}
-                              >
-                                  <div className="p-5 bg-white/5 rounded-2xl mb-4 text-slate-400 group-hover:text-blue-400 group-hover:bg-blue-500/10 transition-colors group-hover:scale-110 duration-300">
-                                     <svg className="w-8 h-8" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12"></path></svg>
-                                  </div>
-                                  <span className="text-base font-semibold text-slate-200">Drag & drop your visual</span>
-                                  <span className="text-sm text-slate-500 mt-2">or click to browse from your computer</span>
-                              </Label>
-                          )}
-                          <input id="image-upload" type="file" accept="image/*" className="hidden" onChange={handleImageUpload} />
+                    <div className="absolute -inset-0.5 bg-gradient-to-r from-cyan-500/20 to-indigo-500/20 rounded-2xl blur opacity-0 group-hover:opacity-100 transition duration-500" />
+                    <div className="relative bg-slate-900/80 backdrop-blur-xl border border-white/10 rounded-2xl p-5 shadow-2xl space-y-3">
+                      <div className="flex items-center justify-between gap-2">
+                        <Label className="text-lg font-bold flex items-center gap-2">
+                          <span className="bg-cyan-500/20 text-cyan-400 p-1.5 rounded-lg">
+                            <Eye className="w-5 h-5" />
+                          </span>
+                          {t.studio.projectPreviewTitle}
+                        </Label>
+                        {onOpenBrandLayout && (
+                          <Button type="button" variant="ghost" size="sm" className="text-cyan-300 h-8" onClick={onOpenBrandLayout}>
+                            <LayoutTemplate className="w-3.5 h-3.5 mr-1" />
+                            {t.studio.openBrandLayout}
+                          </Button>
+                        )}
                       </div>
+                      <p className="text-[11px] text-slate-500 leading-snug">{t.studio.projectPreviewHint}</p>
+                      {newsText.trim() ? (
+                        <StudioLayoutPreview
+                          script={newsText}
+                          imagePreview=""
+                          aspectRatio={aspectRatio}
+                          template={brand.studioTemplate}
+                          layout={brand.layout}
+                          onLayoutChange={setLayout}
+                          headerEnabled={brand.headerEnabled}
+                          headerText={brand.headerText}
+                          headerOpacity={brand.headerOpacity}
+                          footerEnabled={brand.footerEnabled}
+                          footerText={brand.footerText}
+                          footerOpacity={brand.footerOpacity}
+                          socialOverlay={brand.socialOverlay}
+                          socialHandle={brand.socialHandle}
+                          socialSubtitle={brand.socialSubtitle}
+                          socialAvatarUrl={socialAvatarPreview || undefined}
+                        />
+                      ) : (
+                        <p className="text-xs text-slate-500 text-center py-12 border border-dashed border-white/10 rounded-xl">
+                          {t.studio.projectPreviewEmpty}
+                        </p>
+                      )}
                     </div>
                   </div>
-                </div>
 
-                {/* Settings & Generation Column */}
-                <div className="lg:col-span-5 space-y-8">
                   <div className="relative group h-full flex flex-col">
                     <div className="absolute -inset-0.5 bg-gradient-to-r from-purple-500/20 to-pink-500/20 rounded-2xl blur opacity-0 group-hover:opacity-100 transition duration-500"></div>
                     <div className="relative bg-slate-900/80 backdrop-blur-xl border border-white/10 rounded-2xl p-6 shadow-2xl flex-1 flex flex-col">
@@ -533,30 +392,43 @@ export function StudioView({ targetLang, setTargetLang }: StudioViewProps) {
                           </div>
 
                           {studioVisualMode === 'html_scenes' && (
-                            <div className="rounded-xl border border-cyan-500/20 bg-cyan-500/5 p-3">
-                              <StudioScenePreview script={newsText} imagePreview={imagePreview} aspectRatio={aspectRatio} />
-                            </div>
+                          <motion.div className="space-y-2.5">
+                              <Label className="text-slate-400 text-xs font-bold uppercase tracking-widest">{t.studio.renderEngine}</Label>
+                              <Select value={studioRenderEngine} onValueChange={(v) => setStudioRenderEngine(v as 'auto' | 'playwright' | 'hyperframes')}>
+                                <SelectTrigger className="w-full bg-black/40 border-white/10 h-11 rounded-xl">
+                                  <SelectValue />
+                                </SelectTrigger>
+                                <SelectContent className="bg-slate-900 border-white/10 rounded-xl">
+                                  <SelectItem value="auto">{t.studio.renderAuto}</SelectItem>
+                                  <SelectItem value="hyperframes">{t.studio.renderHyperframes}</SelectItem>
+                                  <SelectItem value="playwright">{t.studio.renderPlaywright}</SelectItem>
+                                </SelectContent>
+                              </Select>
+                              <p className="text-[11px] text-slate-500 leading-snug">{t.studio.renderEngineHint}</p>
+                          </motion.div>
                           )}
 
-                          <motion.div layout className="space-y-3">
-                            <motion.div layout>
-                              <Label className="text-slate-400 text-xs font-bold uppercase tracking-widest">{t.studio.brandingTitle}</Label>
-                              <p className="text-[11px] text-slate-500 mt-1 leading-snug">{t.studio.brandingHint}</p>
-                            </motion.div>
-                            {renderBrandingBand('header', headerEnabled, setHeaderEnabled, headerText, setHeaderText, headerOpacity, setHeaderOpacity, headerImage, setHeaderImage, t.studio.headerLabel)}
-                            {renderBrandingBand('footer', footerEnabled, setFooterEnabled, footerText, setFooterText, footerOpacity, setFooterOpacity, footerImage, setFooterImage, t.studio.footerLabel)}
-                          </motion.div>
+                          {onOpenBrandLayout && (
+                            <button
+                              type="button"
+                              onClick={onOpenBrandLayout}
+                              className="w-full rounded-xl border border-dashed border-cyan-500/30 bg-cyan-500/5 px-4 py-3 text-left hover:bg-cyan-500/10 transition-colors"
+                            >
+                              <p className="text-sm font-medium text-cyan-100">{t.studio.openBrandLayout}</p>
+                              <p className="text-[11px] text-slate-500 mt-1">{t.brandLayout.sharedHint}</p>
+                            </button>
+                          )}
 
                           <div className="space-y-2.5">
                               <Label className="text-slate-400 text-xs font-bold uppercase tracking-widest">Canvas Format</Label>
-                              <Select value={aspectRatio} onValueChange={setAspectRatio}>
+                              <Select value={aspectRatio} onValueChange={(v) => setAspectRatio(v as AspectRatioValue)}>
                                 <SelectTrigger className="w-full bg-black/40 border-white/10 hover:border-white/20 transition-colors h-11 rounded-xl">
                                   <SelectValue placeholder="Select aspect ratio" />
                                 </SelectTrigger>
                                 <SelectContent className="bg-slate-900 border-white/10 rounded-xl shadow-2xl">
                                   {ASPECT_RATIO_OPTIONS.map((option) => (
                                     <SelectItem key={option.value} value={option.value}>
-                                      {option.label}
+                                      {aspectLabel(option.value)}
                                     </SelectItem>
                                   ))}
                                 </SelectContent>

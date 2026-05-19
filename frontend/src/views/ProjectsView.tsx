@@ -5,6 +5,8 @@ import { Button } from '../components/ui/button';
 import { Play, Download, Clock, Loader2, Ban, PauseCircle, XCircle, RefreshCw } from 'lucide-react';
 import api from '../lib/api';
 import { useJobEvents } from '../lib/jobEvents';
+import { useI18n } from '@/i18n/I18nProvider';
+import { DeleteAllJobsButton } from '@/components/jobs/DeleteAllJobsButton';
 
 interface Job {
   id: string;
@@ -30,6 +32,7 @@ function statusBadgeClass(status: string) {
 }
 
 export function ProjectsView() {
+  const { t } = useI18n();
   const [projects, setProjects] = useState<Job[]>([]);
   const [isLoading, setIsLoading] = useState(true);
 
@@ -97,7 +100,7 @@ export function ProjectsView() {
     return (
       <div className="flex flex-col items-center justify-center h-64 text-slate-400">
         <Loader2 className="w-8 h-8 animate-spin mb-4" />
-        <p>Loading projects...</p>
+        <p>{t.projects.loading}</p>
       </div>
     );
   }
@@ -107,19 +110,24 @@ export function ProjectsView() {
       <div className="flex items-center justify-between">
         <div>
           <h1 className="text-3xl font-bold mb-2">
-            <span className="bg-gradient-to-br from-indigo-500 to-purple-500 text-transparent bg-clip-text">My Projects</span>
+            <span className="bg-gradient-to-br from-indigo-500 to-purple-500 text-transparent bg-clip-text">
+              {t.projects.title}
+            </span>
           </h1>
-          <p className="text-slate-400">Manage and download your AI dubbed videos.</p>
+          <p className="text-slate-400">{t.projects.subtitle}</p>
         </div>
-        <Button variant="ghost" size="icon" onClick={fetchProjects} title="Refresh">
-          <RefreshCw className="w-4 h-4" />
-        </Button>
+        <div className="flex items-center gap-2">
+          <DeleteAllJobsButton scope="completed" variant="projects" onDeleted={fetchProjects} />
+          <Button variant="ghost" size="icon" onClick={fetchProjects} title={t.projects.refresh}>
+            <RefreshCw className="w-4 h-4" />
+          </Button>
+        </div>
       </div>
 
       <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-6">
         {projects.length === 0 ? (
           <Card className="col-span-full bg-white/5 border-white/10 border-dashed p-20 text-center">
-            <p className="text-slate-500">No projects found. Create your first one in the Dashboard!</p>
+            <p className="text-slate-500">{t.projects.empty}</p>
           </Card>
         ) : (
           projects.map((project) => (

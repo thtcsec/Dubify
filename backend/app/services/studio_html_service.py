@@ -15,6 +15,8 @@ from PIL import Image, ImageDraw, ImageEnhance, ImageFont
 
 
 
+from app.core.config import settings
+from app.utils.studio_overlay import SocialOverlayConfig, StudioLayout, social_overlay_html
 from app.utils.studio_playwright import playwright_render_ready
 
 
@@ -63,11 +65,23 @@ ASPECT_TO_SIZE = {
 
 class StudioHtmlService:
 
-    def __init__(self, aspect_ratio: str = "9:16", template_name: str = "tiktok_news") -> None:
+    def __init__(
+        self,
+        aspect_ratio: str = "9:16",
+        template_name: str = "tiktok_news",
+        *,
+        social_overlay: SocialOverlayConfig | None = None,
+        render_engine: str | None = None,
+        studio_layout: StudioLayout | None = None,
+    ) -> None:
 
         self.aspect_ratio = aspect_ratio if aspect_ratio in ASPECT_TO_SIZE else "9:16"
 
         self.template_name = template_name
+        self.social_overlay = social_overlay or SocialOverlayConfig()
+        self.studio_layout = studio_layout or StudioLayout()
+        raw_engine = (render_engine or settings.STUDIO_RENDER_ENGINE or "auto").strip().lower()
+        self.render_engine = raw_engine if raw_engine in ("auto", "playwright", "hyperframes") else "auto"
 
         folder = ASPECT_TO_FOLDER.get(self.aspect_ratio, "1080x1920")
 
@@ -114,7 +128,20 @@ class StudioHtmlService:
         html_path = output_png.with_suffix(".html")
         self._write_scene_html(html_path, title=title, text=text, image_path=image_path)
 
-        if self._screenshot_playwright(html_path, output_png):
+        if self.render_engine in ("hyperframes", "auto"):
+            from app.utils.hyperframes_render import render_scene_png_via_hyperframes
+
+            if render_scene_png_via_hyperframes(
+                html_path,
+                output_png,
+                width=self.width,
+                height=self.height,
+                capture_at=1.25,
+                duration=2.0,
+            ):
+                return output_png.exists()
+
+        if self.render_engine != "hyperframes" and self._screenshot_playwright(html_path, output_png):
             return output_png.exists()
 
         logger.warning("Playwright render failed; using PIL fallback (install: playwright install chromium).")
@@ -142,14 +169,19 @@ class StudioHtmlService:
 
         from app.utils.template_fill import fill_template
 
+        overlay_html = social_overlay_html(self.social_overlay, self.studio_layout)
         snippet = fill_template(
             template,
             {
                 "IMAGE_URL": image_uri,
                 "TITLE_BLOCK": title_block,
                 "TEXT": body_text,
+                "SOCIAL_OVERLAY": overlay_html,
             },
         )
+        if not body_text.strip():
+            snippet = snippet.replace('class="hook-card"', 'class="hook-card" style="display:none"')
+            snippet = snippet.replace('class="caption-pill"', 'class="caption-pill" style="display:none"')
 
         html_path.write_text(snippet, encoding="utf-8")
 
@@ -215,7 +247,7 @@ class StudioHtmlService:
 
                     pass
 
-                page.wait_for_timeout(1600)
+                page.wait_for_timeout(2200)
 
                 scene = page.locator(".scene").first
 
@@ -343,7 +375,7 @@ def _title_block_html(title: str, *, template_name: str) -> str:
 
     safe = html.escape(title)
 
-    if template_name in ("tiktok_news", "news_scene"):
+    if template_name in ("tiktok_news", "tiktok_news_pill", "news_scene"):
 
         return f'<h1 class="title">{safe}</h1><div class="bar"></div>'
 
@@ -366,6 +398,8 @@ def _title_block_html(title: str, *, template_name: str) -> str:
 def _format_body_text(text: str) -> str:
 
     cleaned = (text or "").replace("\r", "").strip()
+    if not cleaned:
+        return ""
 
     if "\n" in cleaned:
 

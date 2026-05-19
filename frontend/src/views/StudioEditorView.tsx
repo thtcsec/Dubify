@@ -19,6 +19,7 @@ import { Slider } from '../components/ui/slider';
 import { Switch } from '../components/ui/switch';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '../components/ui/tabs';
 import { ClipExportPanel } from '../components/editor/ClipExportPanel';
+import { EditorTimelineScrubber } from '../components/editor/EditorTimelineScrubber';
 import { SubtitlePreviewOverlay } from '../components/editor/SubtitlePreviewOverlay';
 import api, { apiOrigin } from '../lib/api';
 import { DEFAULT_SUBTITLE_STYLE, type SubtitleStyle } from '../lib/subtitleStyle';
@@ -59,6 +60,7 @@ export function StudioEditorView() {
   const [editorTab, setEditorTab] = useState<'subtitles' | 'clips'>('subtitles');
   const [previewBurn, setPreviewBurn] = useState(true);
   const [subStyle, setSubStyle] = useState<SubtitleStyle>(DEFAULT_SUBTITLE_STYLE);
+  const [isScrubbing, setIsScrubbing] = useState(false);
 
   const fetchCompletedJobs = useCallback(async () => {
     setIsLoading(true);
@@ -138,12 +140,21 @@ export function StudioEditorView() {
 
   const selectedCue = cues.find((c) => c.id === selectedCueId) ?? null;
 
-  const seekTo = (sec: number) => {
-    const v = videoRef.current;
-    if (!v) return;
-    v.currentTime = Math.min(Math.max(sec, 0), duration || v.duration || 0);
-    setPlayhead(v.currentTime);
-  };
+  const seekTo = useCallback(
+    (sec: number) => {
+      const v = videoRef.current;
+      const d = duration || v?.duration || 0;
+      if (!v || d <= 0) return;
+      const t = Math.min(Math.max(sec, 0), d);
+      try {
+        v.currentTime = t;
+      } catch {
+        /* ignore */
+      }
+      setPlayhead(t);
+    },
+    [duration],
+  );
 
   const togglePlay = () => {
     const v = videoRef.current;
@@ -351,7 +362,9 @@ export function StudioEditorView() {
                   className="max-h-full max-w-full"
                   src={videoUrl}
                   onLoadedMetadata={(e) => setDuration(e.currentTarget.duration)}
-                  onTimeUpdate={(e) => setPlayhead(e.currentTarget.currentTime)}
+                  onTimeUpdate={(e) => {
+                    if (!isScrubbing) setPlayhead(e.currentTarget.currentTime);
+                  }}
                   onPlay={() => setIsPlaying(true)}
                   onPause={() => setIsPlaying(false)}
                 />
@@ -376,6 +389,17 @@ export function StudioEditorView() {
           {/* Timeline */}
           <div className="border-t border-white/10 bg-[#06080c] p-3 space-y-2">
             <div className="text-[10px] font-semibold uppercase tracking-widest text-slate-500">{t.editor.timeline}</div>
+            <EditorTimelineScrubber
+              duration={totalDur}
+              playhead={playhead}
+              onSeek={seekTo}
+              onScrubStart={() => {
+                setIsScrubbing(true);
+                videoRef.current?.pause();
+                setIsPlaying(false);
+              }}
+              onScrubEnd={() => setIsScrubbing(false)}
+            />
 
             {['video', 'audio', 'subs'].map((track) => (
               <div key={track} className="flex items-center gap-2">

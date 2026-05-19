@@ -27,6 +27,8 @@ class Settings(BaseSettings):
     API_ADMIN_KEY: str = ""
     ENABLE_STUDIO_BGM: bool = True
     STUDIO_BGM_VOLUME: float = 0.15
+    # Studio HTML scene render: auto (try HyperFrames then Playwright), playwright, hyperframes
+    STUDIO_RENDER_ENGINE: str = "auto"
     
     # AI Config
     PROCESSING_ENGINE: str = "local"
@@ -54,6 +56,8 @@ class Settings(BaseSettings):
     ANTHROPIC_API_KEY: str = ""
     GEMINI_API_KEY: str = ""
     GROQ_API_KEY: str = ""
+    # LLM model id from llm_models catalog (e.g. groq:llama-3.3-70b-versatile) or "auto"
+    LLM_MODEL: str = "auto"
     FAL_KEY: str = ""
     FAL_AI_API_KEY: str = ""
 

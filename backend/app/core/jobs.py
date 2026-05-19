@@ -346,6 +346,40 @@ class JobManager:
             self._emit_event("deleted", job_id)
         return True
 
+    def purge_jobs(self, scope: str = "all") -> List[tuple[str, Dict[str, Any]]]:
+        """
+        Remove jobs from the registry. scope=all removes everything (cancels active first).
+        scope=completed removes only completed jobs.
+        Returns list of (job_id, job_snapshot) for storage cleanup.
+        """
+        active_statuses = (JobStatus.PENDING, JobStatus.PROCESSING, JobStatus.PAUSED)
+        with self._lock:
+            if scope == "completed":
+                targets = [
+                    (jid, dict(job))
+                    for jid, job in self.jobs.items()
+                    if job.get("status") == JobStatus.COMPLETED
+                ]
+            else:
+                for job_id, job in list(self.jobs.items()):
+                    if job.get("status") in active_statuses:
+                        ev = self._cancel_events.get(job_id)
+                        if ev:
+                            ev.set()
+                        job["status"] = JobStatus.CANCELLED
+                        job["updated_at"] = datetime.now().isoformat()
+                        job["message"] = "Cancelled for bulk purge"
+                targets = [(jid, dict(job)) for jid, job in self.jobs.items()]
+
+            for job_id, _ in targets:
+                self.jobs.pop(job_id, None)
+                self._cancel_events.pop(job_id, None)
+                self._pause_events.pop(job_id, None)
+
+            if targets:
+                self._save()
+        return targets
+
 
 # Global singleton
 job_manager = JobManager()
