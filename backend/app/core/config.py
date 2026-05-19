@@ -60,6 +60,12 @@ class Settings(BaseSettings):
     LLM_MODEL: str = "auto"
     FAL_KEY: str = ""
     FAL_AI_API_KEY: str = ""
+    PEXELS_API_KEY: str = ""
+    DEEPL_API_KEY: str = ""
+    OPENAI_TTS_MODEL: str = "tts-1"  # tts-1 or tts-1-hd
+    OPENAI_TTS_VOICE: str = "nova"  # alloy, echo, fable, onyx, nova, shimmer
+    # Target voiceover length for AI Research Video (seconds)
+    RESEARCH_VIDEO_TARGET_SECONDS: int = 45
 
     # Downloader settings
     YTDLP_COOKIE_FILE: str = ""

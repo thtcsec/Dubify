@@ -672,8 +672,11 @@ class VideoService:
                 f"x='iw/2-(iw/zoom/2)':"
                 f"y='ih/2-(ih/zoom/2)':"
                 f"d=1:s={width}x{height}:fps=30,"
-                f"eq=saturation=1.08:contrast=1.03:brightness=0.01"
-                f"{subtitle_filter},format=yuv420p"
+                f"eq=saturation=1.08:contrast=1.03:brightness=0.01,"
+                f"noise=c0s=3:c0f=t"  # subtle film grain
+                f"{subtitle_filter},"
+                f"vignette=PI/5"  # gentle vignette
+                f",format=yuv420p"
             )
 
             command = [

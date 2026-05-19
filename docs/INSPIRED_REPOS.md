@@ -8,10 +8,12 @@ Dubify borrows **patterns and algorithms**, not full vendored copies. Credits:
 | [debpalash/OmniVoice-Studio](https://github.com/debpalash/OmniVoice-Studio) | All-in-one local dub app; compare [OMNIVOICE_VS_VIBEVOICE.md](./OMNIVOICE_VS_VIBEVOICE.md) |
 | [microsoft/VibeVoice](https://github.com/microsoft/VibeVoice) | Roadmap: long-form ASR + diarization (ASR-7B) |
 | [Augani/openreel-video](https://github.com/Augani/openreel-video) | Studio Editor layout: project bin, transport, multi-track timeline, cue inspector |
+| [OpenCut-app/OpenCut](https://github.com/OpenCut-app/OpenCut) | CapCut alternative (51k★): timeline patterns, GPU compositor (wgpu/WASM), plugin architecture, headless batch rendering |
 | [AutoDubbing](https://github.com/andrewlevada/autodub) (concept) | ASR segment merge by sentence / pause |
 | [Pixelle-Video](https://github.com/AIDC-AI/Pixelle-Video) | `script_split.py`, HTML scene cards (`templates/studio/`), Playwright render |
+| [jianchang512/pyvideotrans](https://github.com/jianchang512/pyvideotrans) | Multi-provider TTS/ASR/translation patterns, retry logic, audio preprocessing |
 | [PySceneDetect](https://github.com/Breakthrough/PySceneDetect) | Future: visual scene cuts for clip boundaries |
-| [FFmpeg](https://ffmpeg.org/) | Burn subtitles, clip export, 9:16 crop, audio sync |
+| [FFmpeg](https://ffmpeg.org/) | Burn subtitles, clip export, 9:16 crop, audio sync, film grain, vignette |
 | [edge-tts](https://github.com/rany2/edge-tts) | Hybrid/online neural TTS |
 | [faster-whisper](https://github.com/SYSTRAN/faster-whisper) | Local ASR |
 

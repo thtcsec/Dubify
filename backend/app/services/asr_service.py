@@ -96,6 +96,17 @@ class ASRService:
                 })
         
         logger.info(f"Transcription completed. Found {len(segments_out)} segments.")
+
+        # If local transcription returned nothing, try Gemini ASR as fallback
+        if not segments_out and settings.GEMINI_API_KEY:
+            logger.info("Local ASR returned no segments. Trying Gemini ASR fallback...")
+            from app.services.gemini_asr_service import GeminiASRService
+            gemini_asr = GeminiASRService()
+            if gemini_asr.is_available():
+                segments_out = gemini_asr.transcribe(audio_path)
+                if segments_out:
+                    logger.info("Gemini ASR fallback succeeded: %d segments.", len(segments_out))
+
         return segments_out
 
     @staticmethod

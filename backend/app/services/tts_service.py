@@ -350,6 +350,19 @@ class TTSService:
                 return True
             logger.warning(f"F5TTS cloning failed for text '{text[:20]}...', falling back to default TTS provider.")
 
+        # OpenAI TTS provider (highest quality)
+        if self.provider == "openai_tts" or (self.provider == "edge" and settings.OPENAI_API_KEY and not self._use_local_tts()):
+            from app.services.openai_tts_service import OpenAITTSService
+            openai_tts = OpenAITTSService(
+                voice=settings.OPENAI_TTS_VOICE,
+                model=settings.OPENAI_TTS_MODEL,
+            )
+            if self.provider == "openai_tts" and openai_tts.is_available():
+                success = await openai_tts.generate(text, output_path)
+                if success:
+                    return True
+                logger.warning("OpenAI TTS failed, falling back to Edge-TTS.")
+
         if self._use_local_tts():
             try:
                 return await self._generate_local_audio(text, output_path)
@@ -387,7 +400,6 @@ class TTSService:
 
         from app.utils.studio_script_format import strip_popup_markers_for_tts
 
-        text = self._strip_studio_section_markers(text)
         text = strip_popup_markers_for_tts(text)
         text = self._sanitize_for_edge_tts(text)
         text = normalize_for_tts(text, target_lang, transliterate=False)

@@ -59,6 +59,9 @@ class TranslateService:
             return text
 
         try:
+            if self.service_type == "deepl":
+                return self._translate_deepl(text, source_lang)
+
             if self.service_type == "google":
                 translated = GoogleTranslator(source=source_lang, target=self.target_lang).translate(text)
                 if (
@@ -99,6 +102,16 @@ class TranslateService:
         if response.status_code == 200:
             return response.json().get('response', '').strip().strip('"')
         return text
+
+    def _translate_deepl(self, text: str, source_lang: str) -> str:
+        """Translate using DeepL API (highest quality for European languages)."""
+        from app.services.deepl_service import DeepLService
+        service = DeepLService(target_lang=self.target_lang)
+        if not service.is_available():
+            logger.warning("DeepL not available (no key or unsupported lang), falling back to Google.")
+            return GoogleTranslator(source=source_lang, target=self.target_lang).translate(text) or text
+        result = service.translate(text, source_lang)
+        return result if result else text
 
     def _translate_nllb(self, text: str, source_lang: str) -> str:
         """Translate using local NLLB model."""
