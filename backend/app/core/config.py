@@ -61,6 +61,10 @@ class Settings(BaseSettings):
     FAL_KEY: str = ""
     FAL_AI_API_KEY: str = ""
     PEXELS_API_KEY: str = ""
+    # Web Search for Research Video
+    SEARCH_PROVIDER: str = "auto"  # tavily, brave, google, duckduckgo, auto
+    SEARCH_API_KEY: str = ""  # Tavily or Brave API key
+    GOOGLE_SEARCH_CX: str = ""  # Google Programmable Search Engine ID
     DEEPL_API_KEY: str = ""
     OPENAI_TTS_MODEL: str = "tts-1"  # tts-1 or tts-1-hd
     OPENAI_TTS_VOICE: str = "nova"  # alloy, echo, fable, onyx, nova, shimmer
