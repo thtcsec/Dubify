@@ -8,32 +8,54 @@ html,body{width:1080px;height:1920px;overflow:hidden;font-family:'Segoe UI',Aria
 .scene{width:1080px;height:1920px;position:relative;overflow:hidden}
 .bg{position:absolute;inset:0}
 .bg img{width:100%;height:100%;object-fit:cover;animation:kenBurns 14s ease-out forwards}
-.overlay{position:absolute;inset:0;background:linear-gradient(180deg,rgba(5,10,24,.5),rgba(2,6,23,.94))}
-.glow{position:absolute;width:480px;height:480px;border-radius:50%;background:radial-gradient(circle,rgba(56,189,248,.25),transparent 70%);top:-100px;right:-60px}
-.page{position:relative;z-index:2;height:100%;padding:72px 56px 140px;display:flex;flex-direction:column;justify-content:center;align-items:center;gap:28px;text-align:center}
-.title{font-size:72px;font-weight:900;line-height:1.1;color:#fff;text-align:center;text-shadow:0 8px 36px rgba(0,0,0,.6);animation:titlePop .9s cubic-bezier(.22,1,.36,1) .12s both}
-.hook-card{max-width:92%;background:rgba(255,255,255,.13);border:1px solid rgba(255,255,255,.28);backdrop-filter:blur(18px);border-radius:24px;padding:36px 32px;animation:cardPop 1s cubic-bezier(.22,1,.36,1) .28s both;box-shadow:0 28px 70px rgba(0,0,0,.45)}
-.hook{font-size:48px;font-weight:700;color:#f8fafc;line-height:1.45;white-space:pre-line}
-.bar{width:120px;height:6px;border-radius:3px;background:linear-gradient(90deg,#38bdf8,#a78bfa);margin-top:18px}
-@keyframes titlePop{from{opacity:0;transform:translateY(32px)}to{opacity:1;transform:translateY(0)}}
-@keyframes cardPop{from{opacity:0;transform:translateY(56px) scale(.94)}to{opacity:1;transform:translateY(0) scale(1)}}
-@keyframes kenBurns{from{transform:scale(1.02)}to{transform:scale(1.09)}}
+.overlay{position:absolute;inset:0;background:linear-gradient(180deg,rgba(5,10,24,.4) 0%,rgba(2,6,23,.7) 50%,rgba(2,6,23,.96) 100%)}
+.glow{position:absolute;width:520px;height:520px;border-radius:50%;background:radial-gradient(circle,rgba(56,189,248,.2),transparent 70%);top:-120px;right:-80px;animation:glowPulse 4s ease-in-out infinite alternate}
+.glow-2{position:absolute;width:380px;height:380px;border-radius:50%;background:radial-gradient(circle,rgba(167,139,250,.15),transparent 70%);bottom:200px;left:-100px;animation:glowPulse 5s ease-in-out 1s infinite alternate}
+.page{position:relative;z-index:2;height:100%;padding:72px 56px 140px;display:flex;flex-direction:column;justify-content:center;align-items:center;gap:32px;text-align:center}
 
-.social-overlay.tiktok-follow{position:absolute;left:48px;bottom:120px;z-index:20;display:flex;align-items:center;gap:16px;
-  padding:14px 20px;border-radius:999px;background:rgba(0,0,0,.72);border:1px solid rgba(255,255,255,.2)}
+/* Title with staggered word reveal */
+.title{font-size:72px;font-weight:900;line-height:1.12;color:#fff;text-align:center;text-shadow:0 8px 36px rgba(0,0,0,.6);opacity:0;animation:titleSlideUp .8s cubic-bezier(.16,1,.3,1) .2s forwards}
+
+/* Content card with glass morphism + entrance */
+.hook-card{max-width:92%;background:rgba(255,255,255,.08);border:1px solid rgba(255,255,255,.15);backdrop-filter:blur(24px);-webkit-backdrop-filter:blur(24px);border-radius:28px;padding:40px 36px;opacity:0;animation:cardReveal 1s cubic-bezier(.16,1,.3,1) .5s forwards;box-shadow:0 32px 80px rgba(0,0,0,.5),inset 0 1px 0 rgba(255,255,255,.1)}
+.hook{font-size:46px;font-weight:700;color:#f1f5f9;line-height:1.5;white-space:pre-line}
+
+/* Accent bar with gradient animation */
+.bar{width:140px;height:6px;border-radius:3px;background:linear-gradient(90deg,#38bdf8,#a78bfa,#f472b6);background-size:200% 100%;margin-top:20px;opacity:0;animation:barSlide .6s ease .9s forwards,gradientShift 3s ease infinite}
+
+/* Floating particles */
+.particles{position:absolute;inset:0;pointer-events:none;overflow:hidden}
+.particle{position:absolute;width:4px;height:4px;border-radius:50%;background:rgba(255,255,255,.3);animation:float 8s ease-in-out infinite}
+.particle:nth-child(1){left:10%;top:20%;animation-delay:0s;animation-duration:7s}
+.particle:nth-child(2){left:80%;top:30%;animation-delay:1s;animation-duration:9s}
+.particle:nth-child(3){left:50%;top:60%;animation-delay:2s;animation-duration:6s}
+.particle:nth-child(4){left:25%;top:80%;animation-delay:3s;animation-duration:8s}
+.particle:nth-child(5){left:70%;top:15%;animation-delay:0.5s;animation-duration:10s}
+
+/* Animations */
+@keyframes titleSlideUp{from{opacity:0;transform:translateY(40px) scale(.95)}to{opacity:1;transform:translateY(0) scale(1)}}
+@keyframes cardReveal{from{opacity:0;transform:translateY(60px) scale(.92)}to{opacity:1;transform:translateY(0) scale(1)}}
+@keyframes barSlide{from{opacity:0;width:0}to{opacity:1;width:140px}}
+@keyframes kenBurns{from{transform:scale(1.02)}to{transform:scale(1.12)}}
+@keyframes glowPulse{from{opacity:.6;transform:scale(1)}to{opacity:1;transform:scale(1.15)}}
+@keyframes gradientShift{0%{background-position:0% 50%}50%{background-position:100% 50%}100%{background-position:0% 50%}}
+@keyframes float{0%,100%{transform:translateY(0) translateX(0)}25%{transform:translateY(-20px) translateX(10px)}50%{transform:translateY(-10px) translateX(-10px)}75%{transform:translateY(-30px) translateX(5px)}}
+
+/* Social overlay styles */
+.social-overlay.tiktok-follow{position:absolute;left:48px;bottom:120px;z-index:20;display:flex;align-items:center;gap:16px;padding:14px 20px;border-radius:999px;background:rgba(0,0,0,.72);border:1px solid rgba(255,255,255,.2);opacity:0;animation:socialFadeIn .6s ease 1.2s forwards}
 .tt-avatar,.tt-avatar-fallback{width:56px;height:56px;border-radius:50%;object-fit:cover;border:2px solid #fff}
 .tt-avatar-fallback{background:linear-gradient(135deg,#38bdf8,#a78bfa)}
 .tt-meta{display:flex;flex-direction:column;gap:6px}
 .tt-handle{font-size:26px;font-weight:800;color:#fff}
 .tt-follow-btn{align-self:flex-start;padding:6px 18px;border-radius:8px;background:#fe2c55;color:#fff;font-weight:700;font-size:18px}
-.social-overlay.yt-lower-third{position:absolute;left:48px;bottom:72px;z-index:20;display:flex;align-items:center;gap:18px;
-  padding:16px 22px;border-radius:12px;background:linear-gradient(90deg,rgba(204,0,0,.92),rgba(180,0,0,.75));max-width:88%}
+.social-overlay.yt-lower-third{position:absolute;left:48px;bottom:72px;z-index:20;display:flex;align-items:center;gap:18px;padding:16px 22px;border-radius:12px;background:linear-gradient(90deg,rgba(204,0,0,.92),rgba(180,0,0,.75));max-width:88%;opacity:0;animation:socialFadeIn .6s ease 1.2s forwards}
 .yt-avatar,.yt-avatar-fallback{width:64px;height:64px;border-radius:50%;object-fit:cover;border:2px solid rgba(255,255,255,.9)}
 .yt-avatar-fallback{background:#111}
 .yt-text{display:flex;flex-direction:column;gap:4px;flex:1;min-width:0}
 .yt-channel{font-size:28px;font-weight:800;color:#fff}
 .yt-subline{font-size:20px;color:rgba(255,255,255,.88)}
 .yt-subscribe{padding:10px 22px;border-radius:4px;background:#fff;color:#c00;font-weight:800;font-size:18px;white-space:nowrap}
+@keyframes socialFadeIn{from{opacity:0;transform:translateY(20px)}to{opacity:1;transform:translateY(0)}}
 </style>
 </head>
 <body>
@@ -41,9 +63,17 @@ html,body{width:1080px;height:1920px;overflow:hidden;font-family:'Segoe UI',Aria
   <div class="bg"><img src="{IMAGE_URL}" alt=""/></div>
   <div class="overlay"></div>
   <div class="glow"></div>
+  <div class="glow-2"></div>
+  <div class="particles">
+    <div class="particle"></div>
+    <div class="particle"></div>
+    <div class="particle"></div>
+    <div class="particle"></div>
+    <div class="particle"></div>
+  </div>
   <div class="page">
     {TITLE_BLOCK}
-    <div class="hook-card"><div class="hook">{TEXT}</div></div>
+    <div class="hook-card"><div class="hook">{TEXT}</div><div class="bar"></div></div>
   </div>
   {SOCIAL_OVERLAY}
 </div>

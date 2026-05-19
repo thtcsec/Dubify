@@ -247,7 +247,7 @@ class StudioHtmlService:
 
                     pass
 
-                page.wait_for_timeout(2200)
+                page.wait_for_timeout(2500)
 
                 scene = page.locator(".scene").first
 
