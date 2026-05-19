@@ -64,6 +64,12 @@ class Settings(BaseSettings):
     DEEPL_API_KEY: str = ""
     OPENAI_TTS_MODEL: str = "tts-1"  # tts-1 or tts-1-hd
     OPENAI_TTS_VOICE: str = "nova"  # alloy, echo, fable, onyx, nova, shimmer
+    KOKORO_API_URL: str = ""  # Local Kokoro TTS server (e.g. http://localhost:8880)
+    ELEVENLABS_API_KEY: str = ""
+    ELEVENLABS_MODEL: str = "eleven_multilingual_v2"
+    # Audio preprocessing
+    ENABLE_AUDIO_PREPROCESSING: bool = False  # UVR vocal separation before ASR
+    AUDIO_PREPROCESS_MODEL: str = "UVR-MDX-NET-Inst_HQ_4"
     # Target voiceover length for AI Research Video (seconds)
     RESEARCH_VIDEO_TARGET_SECONDS: int = 45
 
