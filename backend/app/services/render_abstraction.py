@@ -137,18 +137,22 @@ class SceneRenderer:
         scene_index: int,
         playwright_service,
     ) -> Optional[RenderResult]:
-        """Capture N frames per scene using CSS animation seeking.
+        """Capture N frames per scene using negative animation-delay seeking.
 
-        Sets --scene-time CSS custom property before each screenshot.
+        For each frame, sets animation-delay to a negative value that "seeks"
+        all CSS animations to the target time. This produces smooth motion
+        without JavaScript — pure CSS deterministic rendering.
         """
         start = time.time()
         capped_duration = min(duration, self.max_scene_duration)
+        # Use 12fps for efficiency (still smooth with Ken Burns + xfade)
+        effective_fps = min(self.fps, 12)
         n_frames = min(
-            int(capped_duration * self.fps),
+            int(capped_duration * effective_fps),
             self.max_frames_per_scene,
         )
 
-        if n_frames < 2:
+        if n_frames < 3:
             return None  # Too short for animation
 
         try:
@@ -159,44 +163,60 @@ class SceneRenderer:
 
         frames: List[Path] = []
         try:
-            from playwright.sync_api import sync_playwright
-
             with sync_playwright() as pw:
                 browser = pw.chromium.launch(
                     headless=True,
-                    args=["--disable-dev-shm-usage"],
+                    args=["--disable-dev-shm-usage", "--disable-gpu"],
                 )
                 page = browser.new_page(
                     viewport={"width": 1080, "height": 1920},
                     device_scale_factor=1,
                 )
-                # Disable network for determinism
-                page.route("**/*", lambda route: route.abort() if "http" in route.request.url else route.continue_())
-                page.goto(html_path.resolve().as_uri(), wait_until="load", timeout=15000)
-                page.wait_for_timeout(500)
+                page.goto(html_path.resolve().as_uri(), wait_until="load", timeout=20000)
+                page.wait_for_timeout(300)
+
+                # Pause all animations initially
+                page.evaluate("document.getAnimations().forEach(a => a.pause())")
 
                 for i in range(n_frames):
                     t = (i / max(n_frames - 1, 1)) * capped_duration
-                    # Set CSS custom property for animation seeking
-                    page.evaluate(f"document.documentElement.style.setProperty('--scene-time', '{t:.3f}')")
-                    page.wait_for_timeout(16)  # ~1 frame at 60fps
+                    # Seek all animations to target time (in ms)
+                    page.evaluate(f"""
+                        document.getAnimations().forEach(a => {{
+                            a.currentTime = {t * 1000:.1f};
+                        }});
+                    """)
+                    page.wait_for_timeout(8)  # Let paint settle
 
                     frame_path = output_dir / f"scene_{scene_index:03d}_frame_{i:04d}.png"
                     page.locator(".scene").first.screenshot(path=str(frame_path), type="png")
                     if frame_path.exists():
                         frames.append(frame_path)
 
-                    # Resource check
+                    # Timeout check
                     elapsed_ms = (time.time() - start) * 1000
-                    if elapsed_ms > 60000:  # 60s timeout
-                        logger.warning("Animated render timeout at frame %d/%d", i, n_frames)
+                    if elapsed_ms > 45000:  # 45s timeout per scene
+                        logger.warning("Animated render timeout at frame %d/%d for scene %d", i, n_frames, scene_index)
                         break
 
                 browser.close()
 
         except Exception as e:
-            logger.error("Animated render failed: %s", e)
+            logger.error("Animated render failed for scene %d: %s", scene_index, e)
             return None
+
+        if len(frames) < 3:
+            return None
+
+        elapsed = (time.time() - start) * 1000
+        logger.info("Animated render: scene %d → %d frames in %.1fs", scene_index, len(frames), elapsed / 1000)
+        return RenderResult(
+            frames=frames,
+            duration=capped_duration,
+            render_time_ms=elapsed,
+            mode=RenderMode.ANIMATED,
+            scene_index=scene_index,
+        )
 
         if not frames:
             return None

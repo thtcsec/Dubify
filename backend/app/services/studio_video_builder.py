@@ -15,6 +15,11 @@ from app.utils.studio_scenes import (
     parse_studio_scenes,
     scene_display_text,
 )
+from app.utils.studio_script_format import (
+    extract_popups_from_text,
+    scene_visual_title,
+    schedule_popup_timings,
+)
 
 
 def _scene_timings_from_subtitles(
@@ -56,6 +61,9 @@ def build_html_scene_video(
     studio_layout: Optional[dict] = None,
     render_engine: str | None = None,
     progress_callback: Optional[Callable[[float], None]] = None,
+    research_topic: str | None = None,
+    wiki_thumbnail_url: str = "",
+    use_scene_images: bool = True,
 ) -> bool:
     scenes = parse_studio_scenes(script)
     if not scenes:
@@ -87,20 +95,63 @@ def build_html_scene_video(
     temp_dir = settings.TEMP_DIR / f"studio_html_{output_path.stem}"
     temp_dir.mkdir(parents=True, exist_ok=True)
 
+    topic_label = (research_topic or "").strip()
+    fetch_images = use_scene_images and bool(topic_label)
+    if fetch_images:
+        from app.services.scene_image_service import resolve_scene_image
+
     scene_pngs: list[tuple[Path, float]] = []
+    # Try animated multi-frame render for smoother motion (Remotion-style)
+    use_animated = settings.STUDIO_RENDER_ENGINE != "pil"  # Animated needs Playwright
+    
     for index, scene in enumerate(timed_scenes):
         png_path = temp_dir / f"scene_{index:03d}.png"
-        # Visual = background + optional scene title only; speech text via karaoke ASS burn.
+        scene_bg = image_path
+        if fetch_images:
+            scene_img = temp_dir / f"scene_{index:03d}_bg.jpg"
+            scene_bg = resolve_scene_image(
+                topic=topic_label,
+                scene_title=str(scene.get("title") or ""),
+                scene_body=str(scene.get("body") or ""),
+                output_path=scene_img,
+                fallback_path=image_path,
+                scene_index=index,
+                wiki_thumbnail_url=wiki_thumbnail_url if index == 0 else "",
+            )
+
+        # Render the scene PNG (static capture at animation midpoint)
         ok = renderer.render_scene_png(
-            title=scene["title"],
-            text="",
-            image_path=image_path,
+            title=scene_visual_title(str(scene.get("title") or "")),
+            text=scene_display_text(str(scene.get("body") or ""), max_chars=120),
+            image_path=scene_bg,
             output_png=png_path,
         )
         if not ok:
             logger.error("Failed to render studio scene %d", index)
             return False
+
         duration = max(0.5, scene["end"] - scene["start"])
+
+        # Attempt animated frame sequence for this scene
+        if use_animated and duration >= 2.0:
+            try:
+                from app.services.render_abstraction import SceneRenderer, RenderMode
+                animated_renderer = SceneRenderer(mode=RenderMode.ANIMATED, fps=12)
+                html_path = png_path.with_suffix(".html")
+                if html_path.exists():
+                    frame_dir = temp_dir / f"scene_{index:03d}_frames"
+                    frame_dir.mkdir(exist_ok=True)
+                    result = animated_renderer.render_scene(
+                        html_path, frame_dir, duration, scene_index=index
+                    )
+                    if result and len(result.frames) >= 3:
+                        logger.info(
+                            "Animated render: scene %d → %d frames (%.1fs)",
+                            index, len(result.frames), duration,
+                        )
+            except Exception as anim_err:
+                logger.debug("Animated render skipped for scene %d: %s", index, anim_err)
+
         scene_pngs.append((png_path, duration))
         logger.info(
             "Studio scene %d/%d '%s' %.1fs",
@@ -109,6 +160,9 @@ def build_html_scene_video(
             scene["title"] or "untitled",
             duration,
         )
+
+    popups = extract_popups_from_text(script)
+    popup_timings = schedule_popup_timings(popups, audio_duration)
 
     return VideoService.studio_scenes_to_video(
         scene_pngs,
@@ -121,4 +175,5 @@ def build_html_scene_video(
         burn_subtitles=True,
         karaoke_subs=True,
         caption_y_pct=layout_cfg.caption_y_pct,
+        popup_timings=popup_timings,
     )

@@ -717,6 +717,53 @@ class VideoService:
             return False
 
     @staticmethod
+    def frames_to_video_segment(
+        frame_paths: list,
+        output_path: Path,
+        duration: float,
+        fps: int = 12,
+        width: int = 1080,
+        height: int = 1920,
+    ) -> bool:
+        """Assemble a sequence of PNG frames into a video segment.
+
+        Used for animated scene rendering (multi-frame per scene).
+        """
+        if not frame_paths:
+            return False
+
+        output_path.parent.mkdir(parents=True, exist_ok=True)
+
+        # Create frame list file for FFmpeg
+        list_file = output_path.with_suffix(".frames.txt")
+        frame_duration = duration / len(frame_paths)
+        with open(list_file, "w", encoding="utf-8") as f:
+            for frame_path in frame_paths:
+                f.write(f"file '{Path(frame_path).resolve().as_posix()}'\n")
+                f.write(f"duration {frame_duration:.4f}\n")
+            # Last frame needs to be listed again (FFmpeg concat demuxer quirk)
+            f.write(f"file '{Path(frame_paths[-1]).resolve().as_posix()}'\n")
+
+        try:
+            command = [
+                "ffmpeg", "-y",
+                "-f", "concat", "-safe", "0",
+                "-i", str(list_file),
+                "-vf", f"scale={width}:{height}:force_original_aspect_ratio=decrease,pad={width}:{height}:(ow-iw)/2:(oh-ih)/2,format=yuv420p",
+                "-r", str(fps),
+                *video_encoder_args(crf=20),
+                "-an",
+                str(output_path),
+            ]
+            subprocess.run(command, check=True, stdout=subprocess.DEVNULL, stderr=subprocess.PIPE)
+            list_file.unlink(missing_ok=True)
+            return output_path.exists() and output_path.stat().st_size > 0
+        except Exception as e:
+            logger.error("Frame sequence assembly failed: %s", e)
+            list_file.unlink(missing_ok=True)
+            return False
+
+    @staticmethod
     def _scene_motion_filter(width: int, height: int, duration: float, scene_index: int) -> str:
         """Ken Burns / pan on each scene PNG so HTML cards are not frozen stills."""
         frames = max(int(duration * 30), 90)
@@ -777,6 +824,20 @@ class VideoService:
                 dur = max(duration, 0.8)
                 if len(scene_pngs) > 1:
                     dur += fade * 0.5
+
+                # Check if this is a frame sequence directory (animated render)
+                frame_dir = png_path.parent / f"scene_{index:03d}_frames"
+                if frame_dir.exists() and frame_dir.is_dir():
+                    frame_files = sorted(frame_dir.glob("*.png"))
+                    if len(frame_files) >= 3:
+                        # Use frame sequence (animated render — smooth motion)
+                        if VideoService.frames_to_video_segment(
+                            frame_files, seg_out, dur, fps=12, width=width, height=height
+                        ):
+                            segment_paths.append(seg_out)
+                            continue
+
+                # Fallback: single PNG with Ken Burns motion
                 motion_filter = VideoService._scene_motion_filter(width, height, dur, index)
                 command = [
                     "ffmpeg",
