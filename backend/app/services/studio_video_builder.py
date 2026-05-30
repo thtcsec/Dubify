@@ -329,9 +329,20 @@ def _build_pixverse_scene_video(
         import time
 
         def _cli_prefix() -> list[str]:
-            if shutil.which("pixverse"):
-                return ["pixverse"]
-            return ["npx", "-y", "pixverse@1.1.10"]
+            pixverse = (
+                shutil.which("pixverse")
+                or shutil.which("pixverse.cmd")
+                or shutil.which("pixverse.exe")
+            )
+            if pixverse:
+                return [pixverse]
+            npx = shutil.which("npx") or shutil.which("npx.cmd") or shutil.which("npx.exe")
+            if npx:
+                return [npx, "-y", "pixverse@1.1.10"]
+            raise RuntimeError(
+                "PixVerse CLI is not available on PATH. Install Node.js (to get npx) or install PixVerse CLI, "
+                "then run `pixverse auth login`."
+            )
 
         def _cli_run(args: list[str]) -> str:
             env = os.environ.copy()
@@ -342,13 +353,18 @@ def _build_pixverse_scene_video(
             env["USERPROFILE"] = str(cli_home)
             cli_cwd = Path(os.environ.get("TEMP") or os.environ.get("TMP") or str(settings.TEMP_DIR)) / "dubify_pixverse_cli"
             cli_cwd.mkdir(parents=True, exist_ok=True)
-            proc = subprocess.run(
-                _cli_prefix() + args,
-                cwd=str(cli_cwd),
-                env=env,
-                capture_output=True,
-                text=True,
-            )
+            try:
+                proc = subprocess.run(
+                    _cli_prefix() + args,
+                    cwd=str(cli_cwd),
+                    env=env,
+                    capture_output=True,
+                    text=True,
+                )
+            except FileNotFoundError as exc:
+                raise RuntimeError(
+                    "PixVerse CLI command could not be executed. Ensure `pixverse` (or Node.js `npx`) is installed and on PATH."
+                ) from exc
             if proc.returncode != 0:
                 raise RuntimeError((proc.stderr or proc.stdout or "").strip()[:1200])
             return (proc.stdout or "").strip()
