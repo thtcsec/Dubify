@@ -220,9 +220,40 @@ class BackgroundWorker:
             asyncio.set_event_loop(None)
 
             if duration_seconds > 0:
+                original_audio = Path(audio_path)
+                original_subtitles = Path(srt_path)
+                original_duration = max(VideoService.get_duration(original_audio), 0.001)
                 stretched_audio = settings.TEMP_DIR / f"{job_id}_tts_stretched.wav"
                 if VideoService.stretch_audio(audio_path, stretched_audio, duration_seconds):
                     audio_path = stretched_audio
+                    stretched_duration = max(VideoService.get_duration(Path(audio_path)), 0.001)
+                    ratio = stretched_duration / original_duration
+
+                    def _vtt_ts(seconds: float) -> str:
+                        total_ms = int(max(float(seconds), 0.0) * 1000)
+                        h = total_ms // 3_600_000
+                        m = (total_ms % 3_600_000) // 60_000
+                        s = (total_ms % 60_000) // 1000
+                        ms = total_ms % 1000
+                        return f"{h:02d}:{m:02d}:{s:02d}.{ms:03d}"
+
+                    try:
+                        cues = (
+                            VideoService._parse_vtt(original_subtitles)
+                            if original_subtitles.suffix.lower() == ".vtt"
+                            else VideoService._parse_srt(original_subtitles)
+                        )
+                        scaled_vtt = settings.TEMP_DIR / f"{job_id}_tts_scaled.vtt"
+                        lines: list[str] = ["WEBVTT", ""]
+                        for idx, (start, end, text) in enumerate(cues, start=1):
+                            lines.append(str(idx))
+                            lines.append(f"{_vtt_ts(start * ratio)} --> {_vtt_ts(end * ratio)}")
+                            lines.append(str(text or "").strip())
+                            lines.append("")
+                        scaled_vtt.write_text("\n".join(lines), encoding="utf-8")
+                        srt_path = scaled_vtt
+                    except Exception as sub_err:
+                        logger.warning("Could not scale subtitles for stretched audio (%s): %s", job_id, sub_err)
                 else:
                     logger.warning("Could not stretch audio to %ss for job %s", duration_seconds, job_id)
 
