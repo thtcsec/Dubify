@@ -225,6 +225,8 @@ def _mux_video_with_audio_and_subtitles(
             "1:a:0",
             "-t",
             f"{audio_duration:.3f}",
+            "-movflags",
+            "+faststart",
             str(output_path),
         ]
     )
@@ -252,6 +254,7 @@ def _build_pixverse_scene_video(
     popup_timings: list[tuple[float, float, dict[str, str]]] | None,
     scene_review_json: str,
     status_callback: Optional[Callable[[str, bool], None]],
+    pixverse_clip_paths: list[str] | None = None,
 ) -> bool:
     from app.services.scene_image_service import resolve_scene_image
     from services.pixverse_adapter import PixVerseAdapter
@@ -266,10 +269,12 @@ def _build_pixverse_scene_video(
     if progress_callback:
         progress_callback(0.1)
 
-    result = adapter.render_with_fallback(plan)
-    logger.info("PixVerse producer: %s", result.message)
+    clip_paths: list[Path] = []
+    for clip in pixverse_clip_paths or []:
+        if clip:
+            clip_paths.append(Path(clip))
     if status_callback:
-        status_callback(result.provider, result.fallback_used)
+        status_callback("pixverse_external" if clip_paths else "local_fallback", not bool(clip_paths))
 
     temp_dir = settings.TEMP_DIR / f"pixverse_{output_path.stem}"
     temp_dir.mkdir(parents=True, exist_ok=True)
@@ -291,23 +296,21 @@ def _build_pixverse_scene_video(
                 wiki_thumbnail_url=wiki_thumbnail_url if index == 0 else "",
             )
 
-        asset_text = result.assets[index] if index < len(result.assets) else shot.fallback_asset
-        asset_path = Path(asset_text)
-        if not asset_path.is_absolute():
-            asset_path = settings.BASE_DIR / asset_path
-
-        force_fallback = bool(source_scene.force_fallback) if source_scene else False
-        if result.fallback_used or force_fallback or not asset_path.exists():
+        if index < len(clip_paths) and clip_paths[index].exists():
+            segment_paths.append(clip_paths[index])
+        else:
+            fallback_path = Path(adapter.local_fallback_asset(index, aspect_ratio))
+            if not fallback_path.is_absolute():
+                fallback_path = settings.BASE_DIR / fallback_path
             if not _render_local_pixverse_clip(
-                output_path=asset_path,
+                output_path=fallback_path,
                 fallback_image=fallback_image,
                 duration=float(shot.duration_seconds),
                 aspect_ratio=aspect_ratio,
                 scene_index=index,
             ):
                 return False
-
-        segment_paths.append(asset_path)
+            segment_paths.append(fallback_path)
         if progress_callback:
             progress_callback(min(0.2 + ((index + 1) / max(len(plan.shots), 1)) * 0.45, 0.7))
 
@@ -320,7 +323,7 @@ def _build_pixverse_scene_video(
     else:
         VideoService._xfade_chain(segment_paths, video_only, fade_seconds=0.45)
 
-    return _mux_video_with_audio_and_subtitles(
+    if _mux_video_with_audio_and_subtitles(
         video_only=video_only,
         audio_path=audio_path,
         output_path=output_path,
@@ -329,7 +332,10 @@ def _build_pixverse_scene_video(
         caption_y_pct=layout_cfg.caption_y_pct,
         popup_timings=popup_timings,
         progress_callback=progress_callback,
-    )
+    ):
+        return True
+
+    return False
 
 
 def build_html_scene_video(
@@ -350,6 +356,7 @@ def build_html_scene_video(
     use_scene_images: bool = True,
     scene_review_json: str = "",
     status_callback: Optional[Callable[[str, bool], None]] = None,
+    pixverse_clip_paths: list[str] | None = None,
 ) -> bool:
     scenes = parse_studio_scenes(script)
     if not scenes:
@@ -389,7 +396,8 @@ def build_html_scene_video(
     popups = extract_popups_from_text(script)
     popup_timings = schedule_popup_timings(popups, audio_duration)
 
-    if settings.ENABLE_PIXVERSE_PRODUCER:
+    enable_pixverse = bool(settings.ENABLE_PIXVERSE_PRODUCER) and bool(pixverse_clip_paths)
+    if enable_pixverse:
         try:
             pixverse_ok = _build_pixverse_scene_video(
                 script=script,
@@ -407,13 +415,16 @@ def build_html_scene_video(
                 popup_timings=popup_timings,
                 scene_review_json=scene_review_json,
                 status_callback=status_callback,
+                pixverse_clip_paths=pixverse_clip_paths,
             )
         except Exception as pixverse_err:
-            logger.warning("PixVerse producer path raised %s; falling back to HTML render.", pixverse_err)
+            logger.exception(f"[PIXVERSE] Critical error in PixVerse pipeline: {pixverse_err}")
             pixverse_ok = False
         if pixverse_ok:
             return True
         logger.warning("PixVerse producer path failed; falling back to HTML scene render.")
+    else:
+        logger.info("Using standard HTML/Stock render path.")
 
     scene_pngs: list[tuple[Path, float]] = []
     use_animated = bool(settings.STUDIO_ANIMATED_RENDER) and settings.STUDIO_RENDER_ENGINE != "pil"
@@ -482,7 +493,7 @@ def build_html_scene_video(
             duration,
         )
 
-    return VideoService.studio_scenes_to_video(
+    success = VideoService.studio_scenes_to_video(
         scene_pngs,
         audio_path,
         output_path,
@@ -495,3 +506,4 @@ def build_html_scene_video(
         caption_y_pct=layout_cfg.caption_y_pct,
         popup_timings=popup_timings,
     )
+    return success

@@ -107,7 +107,8 @@ class Settings(BaseSettings):
     YTDLP_USE_OAUTH2: bool = False
     DOUYIN_FALLBACK_API_BASE: str = ""
     DOUYIN_FALLBACK_API_KEY: str = ""
-    
+
+
     class Config:
         case_sensitive = True
         env_file = str(Path(__file__).resolve().parent.parent.parent.parent / ".env")

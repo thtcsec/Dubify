@@ -107,6 +107,7 @@ async def create_studio_video(
     background_tasks: BackgroundTasks,
     image: Optional[UploadFile] = File(None),
     image_url: Optional[str] = Form(None),
+    pixverse_clips: list[UploadFile] = File([]),
     text: str = Form(...),
     target_lang: str = Form("vi"),
     voice_id: str = Form("vi-VN-HoaiMyNeural"),
@@ -188,6 +189,14 @@ async def create_studio_video(
             shutil.copyfileobj(social_avatar.file, buffer)
         social_avatar_path = str(saved)
 
+    pixverse_clip_paths: list[str] = []
+    for index, clip in enumerate(pixverse_clips or []):
+        if clip is None or not (clip.filename or "").strip():
+            continue
+        saved = settings.INPUT_DIR / f"{job_id}_pixverse_{index:02d}_{Path(clip.filename).name}"
+        await save_upload_limited(clip, saved, MAX_UPLOAD_SIZE)
+        pixverse_clip_paths.append(str(saved))
+
     allowed_templates = {"tiktok_news", "tiktok_news_pill", "news_scene", "pixelle_story"}
     if studio_template not in allowed_templates:
         studio_template = settings.STUDIO_DEFAULT_TEMPLATE
@@ -226,6 +235,7 @@ async def create_studio_video(
         "use_scene_images": use_scene_images,
         "project_name": display_name,
         "scene_review_json": scene_review_json.strip(),
+        "pixverse_clip_paths": pixverse_clip_paths,
     })
 
     return {"job_id": job_id}

@@ -217,7 +217,11 @@ class BackgroundWorker:
                 )
 
             def update_pixverse_status(provider: str, fallback_used: bool):
-                provider_label = "PixVerse" if provider == "pixverse" else "Local fallback"
+                provider_label = (
+                    "PixVerse (external clips)"
+                    if provider == "pixverse_external"
+                    else ("PixVerse" if provider == "pixverse" else "Local fallback")
+                )
                 job_manager.update_job(
                     job_id,
                     JobStatus.PROCESSING,
@@ -238,17 +242,18 @@ class BackgroundWorker:
             if studio_visual_mode == "html_scenes":
                 from app.services.studio_video_builder import build_html_scene_video
 
+                pixverse_clips_present = bool(payload.get("pixverse_clip_paths"))
                 job_manager.update_job(
                     job_id,
                     JobStatus.PROCESSING,
                     message=(
                         "Step 3/3: Rendering PixVerse storyboard..."
-                        if settings.ENABLE_PIXVERSE_PRODUCER
+                        if settings.ENABLE_PIXVERSE_PRODUCER and pixverse_clips_present
                         else "Step 3/3: Rendering HTML scene slides..."
                     ),
                     progress=76,
                     pixverse_enabled=bool(settings.ENABLE_PIXVERSE_PRODUCER),
-                    pixverse_provider="pending" if settings.ENABLE_PIXVERSE_PRODUCER else "html_scenes",
+                    pixverse_provider="pixverse_external" if (settings.ENABLE_PIXVERSE_PRODUCER and pixverse_clips_present) else "html_scenes",
                     pixverse_fallback_used=False,
                 )
                 success = build_html_scene_video(
@@ -268,6 +273,7 @@ class BackgroundWorker:
                     use_scene_images=bool(use_scene_images),
                     scene_review_json=str(payload.get("scene_review_json") or ""),
                     status_callback=update_pixverse_status,
+                    pixverse_clip_paths=list(payload.get("pixverse_clip_paths") or []),
                 )
                 if not success:
                     logger.warning("HTML scene render failed for %s; using classic Ken Burns.", job_id)
