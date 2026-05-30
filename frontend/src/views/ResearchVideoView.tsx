@@ -38,16 +38,18 @@ type WizardStep = 1 | 2 | 3 | 4;
 
 function estimateSceneDuration(text: string): number {
   const words = text.trim().split(/\s+/).filter(Boolean).length;
-  return Math.max(5, Math.min(8, Math.round(words / 7) || 6));
+  // Guide says 5-8s per shot. Let's aim for 7s average to hit 30s+ easily.
+  return Math.max(6, Math.min(8, Math.round(words / 6) || 7));
 }
 
 function buildPixVersePrompt(title: string, text: string, topic: string): string {
   const normalized = `${title} ${text}`.replace(/\s+/g, ' ').trim();
   const words = normalized.split(' ').filter(Boolean);
   const subject = words.slice(0, 6).join(' ') || topic || 'main subject';
-  const action = words.slice(6, 18).join(' ') || normalized || 'subtle cinematic motion';
-  const style = topic ? `cinematic soft light, premium social video about ${topic}` : 'cinematic soft light';
-  return `Subject: ${subject}. Action: ${action}. Camera movement: slow push in. Lighting and style: ${style}. Context: ${normalized || topic || 'story beat'}.`;
+  const action = words.slice(6, 20).join(' ') || normalized || 'dynamic cinematic motion';
+  const style = `PixVerse V6, cinematic 4k, highly detailed, professional lighting, social media viral style, themed around ${topic || 'innovation'}`;
+  
+  return `Subject: ${subject}. Action: ${action}. Camera movement: slow push in and orbit. Lighting and style: ${style}. Context: ${normalized || topic || 'visual storytelling beat'}.`;
 }
 
 function splitSceneText(text: string): [string, string] {
@@ -81,7 +83,8 @@ function normalizeSceneReviewCards(script: string, topic: string): SceneReviewCa
     status: 'draft' as const,
   }));
 
-  while (cards.length > 0 && cards.length < 4) {
+  // Force at least 5 scenes if possible to hit 30s+ safely with 6-7s shots
+  while (cards.length > 0 && cards.length < 5) {
     let splitIndex = 0;
     let longest = 0;
     cards.forEach((card, index) => {
@@ -112,6 +115,13 @@ function normalizeSceneReviewCards(script: string, topic: string): SceneReviewCa
       },
     ];
     cards = [...cards.slice(0, splitIndex), ...replacements, ...cards.slice(splitIndex + 1)];
+  }
+
+  // Ensure total duration is at least 30s by padding last scene if needed
+  const totalDur = cards.reduce((sum, c) => sum + c.durationSeconds, 0);
+  if (totalDur < 30 && cards.length > 0) {
+    const last = cards[cards.length - 1];
+    last.durationSeconds += (30 - totalDur);
   }
 
   if (cards.length > 8) {
@@ -455,10 +465,15 @@ export function ResearchVideoView({ targetLang, setTargetLang, onOpenBrandLayout
             {t.researchVideo.title}
           </h1>
           <Badge className="bg-amber-500/20 text-amber-300 border-amber-500/40 uppercase text-[10px] tracking-wider">
-            Beta
+            Hackathon Edition
           </Badge>
         </div>
-        <p className="text-slate-400 max-w-2xl">{t.researchVideo.subtitle}</p>
+        <p className="text-slate-400 max-w-2xl flex items-center gap-2">
+          {t.researchVideo.subtitle}
+          <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded-full bg-blue-500/10 text-blue-400 text-[10px] border border-blue-500/20 font-medium">
+            <Sparkles className="w-2.5 h-2.5" /> TRAE SOLO MTC Optimized
+          </span>
+        </p>
       </div>
 
       {error && (
