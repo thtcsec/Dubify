@@ -390,7 +390,41 @@ def _build_pixverse_scene_video(
             raise RuntimeError("PixVerse CLI is not logged in. Run: pixverse auth login")
 
         shot_ids: list[str] = []
+        in_flight: list[str] = []
+        max_in_flight = max(1, int(getattr(settings, "PIXVERSE_CLI_MAX_IN_FLIGHT", 2)))
+
+        def _status_map(ids: list[str]) -> dict[str, str]:
+            if not ids:
+                return {}
+            status_raw = _cli_run(
+                ["task", "status", "--ids", ",".join(ids), "--type", "video", "--json"]
+            )
+            payload = json.loads(status_raw or "{}")
+            out: dict[str, str] = {}
+            for vid in ids:
+                st = ((payload.get(str(vid)) or {}).get("status") or "").strip()
+                out[str(vid)] = st
+            return out
+
         for index, shot in enumerate(plan.shots):
+            while len(in_flight) >= max_in_flight:
+                status_map = _status_map(in_flight)
+                completed_now = [
+                    vid for vid in list(in_flight) if str(status_map.get(str(vid)) or "").lower() == "completed"
+                ]
+                for vid in completed_now:
+                    if vid in in_flight:
+                        in_flight.remove(vid)
+                if in_flight:
+                    if status_callback:
+                        status_callback(
+                            "pixverse_cli",
+                            False,
+                            f"Waiting for capacity ({len(in_flight)}/{max_in_flight})",
+                            0.06,
+                        )
+                    time.sleep(8)
+
             if status_callback:
                 status_callback(
                     "pixverse_cli",
@@ -398,30 +432,49 @@ def _build_pixverse_scene_video(
                     f"Submitting generation ({index+1}/{len(plan.shots)})",
                     0.08 + (0.22 * ((index + 1) / max(len(plan.shots), 1))),
                 )
-            raw = _cli_run(
-                [
-                    "create",
-                    "video",
-                    "--prompt",
-                    shot.prompt,
-                    "--model",
-                    "v6",
-                    "--quality",
-                    "720p",
-                    "--aspect-ratio",
-                    plan.aspect_ratio,
-                    "--duration",
-                    str(int(shot.duration_seconds)),
-                    "--no-audio",
-                    "--no-wait",
-                    "--json",
-                ]
-            )
+            raw = ""
+            for attempt in range(10):
+                try:
+                    raw = _cli_run(
+                        [
+                            "create",
+                            "video",
+                            "--prompt",
+                            shot.prompt,
+                            "--model",
+                            "v6",
+                            "--quality",
+                            "720p",
+                            "--aspect-ratio",
+                            plan.aspect_ratio,
+                            "--duration",
+                            str(int(shot.duration_seconds)),
+                            "--no-audio",
+                            "--no-wait",
+                            "--json",
+                        ]
+                    )
+                    break
+                except RuntimeError as err:
+                    msg = str(err)
+                    if "Reached the limit for concurrent generations" in msg or "500044" in msg:
+                        sleep_s = min(90, 8 + (attempt * 8))
+                        if status_callback:
+                            status_callback(
+                                "pixverse_cli",
+                                False,
+                                f"Rate-limited, retrying in {sleep_s}s",
+                                0.07,
+                            )
+                        time.sleep(sleep_s)
+                        continue
+                    raise
             payload = json.loads(raw or "{}")
             vid = str(payload.get("video_id") or "").strip()
             if not vid:
                 raise RuntimeError(f"PixVerse CLI create returned no video_id. Raw={raw[:500]}")
             shot_ids.append(vid)
+            in_flight.append(vid)
 
         deadline = time.time() + float(getattr(settings, "PIXVERSE_CLI_TIMEOUT_SECONDS", 900))
         while True:

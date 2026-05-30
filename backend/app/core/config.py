@@ -66,6 +66,7 @@ class Settings(BaseSettings):
     ENABLE_PIXVERSE_PRODUCER: bool = True
     ENABLE_PIXVERSE_CLI_PRODUCER: bool = True
     PIXVERSE_CLI_TIMEOUT_SECONDS: int = 900
+    PIXVERSE_CLI_MAX_IN_FLIGHT: int = 2
     PEXELS_API_KEY: str = ""
     # Web Search for Research Video
     SEARCH_PROVIDER: str = "auto"  # tavily, brave, google, duckduckgo, auto
