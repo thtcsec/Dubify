@@ -2,6 +2,7 @@ from app.utils.studio_script_format import (
     clean_llm_studio_output,
     extract_popups_from_text,
     normalize_popup_markers,
+    scene_visual_title,
     strip_popup_markers_for_tts,
 )
 
@@ -15,6 +16,12 @@ def test_strip_popup_for_tts():
     text = "Hello [STAT: 2 billion users] world [DEF: AI — assistant]"
     assert "STAT" not in strip_popup_markers_for_tts(text)
     assert "Hello" in strip_popup_markers_for_tts(text)
+
+
+def test_scene_visual_title_hides_hook():
+    assert scene_visual_title("Hook") == ""
+    assert scene_visual_title("Cảnh 2") == ""
+    assert scene_visual_title("Gemini keynote") == "Gemini keynote"
 
 
 def test_extract_popups():
