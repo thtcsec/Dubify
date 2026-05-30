@@ -88,62 +88,62 @@ async def main() -> int:
 
     script = (
         "[Scene 1]\n"
-        "Một chiếc điện thoại AI xuất hiện giữa ánh đèn sân khấu, màn hình hiển thị trợ lý thông minh.\n\n"
+        "vivo X300 Ultra opens as a creator-first flagship. Premium lighting, cinematic staging, and a confident launch tone.\n\n"
         "[Scene 2]\n"
-        "Cảnh cận: giao diện gợi ý lịch trình, camera slow push in, ánh sáng cinematic.\n\n"
+        "Close-up: the camera island and lens glass reflect like a professional cinema rig. The story is all about imaging identity.\n\n"
         "[Scene 3]\n"
-        "Chuyển cảnh: người dùng ra lệnh bằng giọng nói, điện thoại phản hồi tức thì.\n\n"
+        "A creator films at night in the city. The workflow is fast: capture, edit, publish — built for short-form platforms.\n\n"
         "[Scene 4]\n"
-        "Biểu đồ tăng trưởng: AI phones bùng nổ năm 2026, phong cách viral social.\n\n"
+        "Zoom becomes storytelling: a clean, stable telephoto moment that feels like a premium commercial shot.\n\n"
         "[Scene 5]\n"
-        "Kết: sản phẩm xoay 360, logo hiện lên, kêu gọi hành động rõ ràng."
+        "Final call to action: the device hero shot returns, the campaign message lands, and the product closes strong."
     )
 
     scene_review = [
         {
             "scene_id": "scene_01",
             "title": "Launch hero",
-            "description": "Điện thoại AI xuất hiện giữa ánh đèn sân khấu, phong cách cinematic product reveal.",
+            "description": "Premium hero device reveal for a creator-first flagship campaign.",
             "duration_seconds": 6,
             "approved": True,
             "prompt": "Subject: a futuristic AI smartphone on a clean stage. Action: dramatic product reveal, subtle floating UI particles. Camera movement: slow push in. Lighting and style: PixVerse V6, cinematic, premium commercial lighting, sharp focus, high detail. Context: product launch hero shot.",
         },
         {
             "scene_id": "scene_02",
-            "title": "UI close-up",
-            "description": "Cảnh cận giao diện trợ lý, hiển thị lịch trình và nhắc việc.",
+            "title": "Camera close-up",
+            "description": "Macro camera island reveal with premium reflections and launch lighting.",
             "duration_seconds": 6,
             "approved": True,
-            "prompt": "Subject: close-up of an AI assistant UI on a smartphone screen. Action: schedule cards animate smoothly. Camera movement: slow push in with slight parallax. Lighting and style: PixVerse V6, clean tech aesthetic, soft cinematic light, high detail. Context: assistant planning scene.",
+            "prompt": "Subject: close-up of vivo X300 Ultra camera island with dual 200MP storytelling emphasis. Action: macro camera module reveal with precision highlights and glass reflections. Camera movement: slow macro slide and tilt. Lighting and style: PixVerse V6, cinematic macro commercial, sharp metal texture, glossy premium look. Context: emphasize creator-grade camera identity.",
         },
         {
             "scene_id": "scene_03",
-            "title": "Voice command",
-            "description": "Người dùng ra lệnh bằng giọng nói, điện thoại phản hồi tức thì.",
+            "title": "Creator workflow",
+            "description": "Creator filming in an urban night setting, capture-to-edit energy, social-first premium vibe.",
             "duration_seconds": 6,
             "approved": True,
-            "prompt": "Subject: person speaking to a smartphone, modern indoor setting. Action: voice command triggers instant assistant response, subtle UI glow. Camera movement: handheld gentle drift. Lighting and style: PixVerse V6, realistic cinematic, warm soft light, high detail. Context: real-life usage moment.",
+            "prompt": "Subject: young creator filming with vivo X300 Ultra in an urban night setting. Action: switching from capture to editing mindset, confident creator energy. Camera movement: handheld cinematic drift. Lighting and style: PixVerse V6, social-first premium ad, neon city bokeh, realistic cinematic motion. Context: mobile creator workflow and content production.",
         },
         {
             "scene_id": "scene_04",
-            "title": "Market surge",
-            "description": "Biểu đồ tăng trưởng và hình ảnh thị trường AI phones năm 2026.",
+            "title": "Zoom power",
+            "description": "Telephoto storytelling beat: stable zoom, premium lens feel, cinematic depth compression.",
             "duration_seconds": 6,
             "approved": True,
-            "prompt": "Subject: futuristic data visualization with rising chart and silhouettes of smartphones. Action: chart lines surge upward with dynamic motion. Camera movement: slow orbit. Lighting and style: PixVerse V6, vibrant tech commercial, high contrast, crisp details. Context: market growth beat.",
+            "prompt": "Subject: city skyline and portrait subject captured through long-range mobile zoom. Action: smooth zoom storytelling with stable focus and premium lens feel. Camera movement: slow zoom and lateral drift. Lighting and style: PixVerse V6, cinematic telephoto look, polished ad aesthetic, realistic depth compression. Context: show pro-grade zoom and storytelling power.",
         },
         {
             "scene_id": "scene_05",
             "title": "Final CTA",
-            "description": "Sản phẩm xoay 360, logo hiện lên, kết thúc mạnh.",
+            "description": "Premium launch finale with a clear campaign call-to-action.",
             "duration_seconds": 6,
             "approved": True,
-            "prompt": "Subject: AI smartphone rotating 360 on a premium pedestal. Action: logo appears with subtle particles, confident finish. Camera movement: smooth orbit and settle. Lighting and style: PixVerse V6, premium commercial, glossy reflections, high detail. Context: final call-to-action end frame.",
+            "prompt": "Subject: vivo X300 Ultra centered with bold title card and campaign finish. Action: product rotates slightly while logo and creator message resolve on screen. Camera movement: smooth orbit and settle. Lighting and style: PixVerse V6, premium launch finale, high-contrast cinematic lighting, luxury smartphone ad. Context: final campaign-ready call to action.",
         },
     ]
 
-    tts = TTSService(voice="vi-VN-HoaiMyNeural", provider=settings.STUDIO_TTS_PROVIDER, target_lang="vi")
-    audio_path, sub_path = await tts.generate_studio_audio_with_subtitles(script, "vi", job_id)
+    tts = TTSService(voice="en-US-JennyNeural", provider=settings.STUDIO_TTS_PROVIDER, target_lang="en")
+    audio_path, sub_path = await tts.generate_studio_audio_with_subtitles(script, "en", job_id)
 
     out = settings.TEMP_DIR / f"{job_id}.mp4"
     ok = build_html_scene_video(
@@ -156,7 +156,7 @@ async def main() -> int:
         template_name="tiktok_news",
         use_scene_images=False,
         scene_review_json=json.dumps(scene_review, ensure_ascii=False),
-        research_topic="AI Phones 2026",
+        research_topic="vivo X300 Ultra campaign",
         pixverse_clip_paths=[str(p) for p in external_clips] if use_external else None,
     )
 

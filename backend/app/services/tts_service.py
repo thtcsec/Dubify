@@ -2,6 +2,7 @@ import logging
 import asyncio
 import shutil
 import subprocess
+import sys
 import tempfile
 import threading
 import wave
@@ -463,18 +464,18 @@ class TTSService:
                 else:
                     chunk_audio = temp_dir / f"chunk_{index:03d}.mp3"
                     ok = await self._edge_tts_subprocess(
-                        chunk, self.voice, chunk_audio, subtitle_path=None, max_chars=None
+                        chunk, self.voice, chunk_audio, subtitle_path=None, max_chars=None, retries=5
                     )
                     if not ok:
                         await asyncio.sleep(0.8)
                         ok = await self._edge_tts_subprocess(
-                            chunk, self.voice, chunk_audio, subtitle_path=None, max_chars=100, retries=3
+                            chunk, self.voice, chunk_audio, subtitle_path=None, max_chars=100, retries=5
                         )
                     if not ok:
                         shorter = self._edge_safe_text(chunk, max_chars=80)
                         if shorter and shorter != chunk:
                             ok = await self._edge_tts_subprocess(
-                                shorter, self.voice, chunk_audio, subtitle_path=None, max_chars=None, retries=2
+                                shorter, self.voice, chunk_audio, subtitle_path=None, max_chars=None, retries=3
                             )
                     if not ok:
                         ok = await self._generate_local_audio(chunk, chunk_audio.with_suffix(".wav"))
@@ -501,11 +502,7 @@ class TTSService:
         try:
             chunk_paths, vtt_lines = await synthesize_with_provider(provider_name)
         except Exception as err:
-            if provider_name == "edge" and settings.ELEVENLABS_API_KEY:
-                logger.warning("Edge-TTS unstable; retrying full voiceover with ElevenLabs. Error: %s", err)
-                chunk_paths, vtt_lines = await synthesize_with_provider("elevenlabs")
-            else:
-                raise
+            raise RuntimeError(f"Studio TTS failed (provider={provider_name}): {err}") from err
 
         if not chunk_paths:
             raise RuntimeError("Studio TTS produced no audio chunks.")
@@ -602,7 +599,18 @@ class TTSService:
             voices.append(primary_voice)
         else:
             voices.append(self.default_voice_for_lang(self.target_lang))
-        return [v for v in voices if v]
+        lang = (self.target_lang or "").lower()
+        if lang.startswith("en"):
+            voices += ["en-US-JennyNeural", "en-US-GuyNeural"]
+        if lang.startswith("vi"):
+            voices += ["vi-VN-HoaiMyNeural", "vi-VN-NamMinhNeural"]
+        seen: set[str] = set()
+        out: list[str] = []
+        for v in voices:
+            if v and v not in seen:
+                seen.add(v)
+                out.append(v)
+        return out
 
     @staticmethod
     def _same_gender(voice_a: str, voice_b: str) -> bool:
@@ -702,7 +710,7 @@ class TTSService:
         retries: int = 3,
         log_failures: bool = True,
     ) -> bool:
-        """Synthesize with edge-tts in a worker thread (avoids Windows Proactor + CLI subprocess issues)."""
+        """Synthesize with edge-tts via subprocess for stability on Windows."""
         text = self._edge_safe_text(text, max_chars=max_chars)
         if not text or not re.search(r"[\w\u00C0-\u1FFF]", text, re.UNICODE):
             logger.warning("Edge-TTS skipped: no speakable text after sanitize.")
@@ -715,13 +723,35 @@ class TTSService:
         for voice_name in voices_to_try:
             for attempt in range(retries):
                 logger.info(f"Edge-TTS attempt {attempt+1} using voice {voice_name} for: {text[:30]}...")
-                ok, last_err = await asyncio.to_thread(
-                    self._edge_tts_sync_api,
-                    text,
-                    voice_name,
-                    audio_path,
-                    subtitle_path,
-                )
+                try:
+                    command = [
+                        sys.executable,
+                        "-m",
+                        "edge_tts",
+                        "--text",
+                        text,
+                        "--voice",
+                        voice_name,
+                        "--write-media",
+                        str(audio_path),
+                    ]
+                    if subtitle_path is not None:
+                        command += ["--write-subtitles", str(subtitle_path)]
+                    proc = await asyncio.to_thread(
+                        subprocess.run,
+                        command,
+                        capture_output=True,
+                        text=True,
+                    )
+                    if proc.returncode == 0:
+                        ok = True
+                        last_err = ""
+                    else:
+                        ok = False
+                        last_err = (proc.stderr or proc.stdout or "").strip()[:800]
+                except Exception as exc:
+                    ok = False
+                    last_err = str(exc)[:800]
                 if ok:
                     # Check for minimum file size to ensure quality
                     if audio_path.exists() and audio_path.stat().st_size > 1000:
