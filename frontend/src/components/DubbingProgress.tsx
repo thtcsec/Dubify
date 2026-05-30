@@ -25,6 +25,9 @@ interface JobStatusResponse {
   error?: string | null;
   output_path?: string | null;
   parts?: ShortPart[];
+  pixverse_enabled?: boolean;
+  pixverse_provider?: string | null;
+  pixverse_fallback_used?: boolean;
 }
 
 interface DubbingProgressProps {
@@ -134,6 +137,15 @@ export const DubbingProgress = ({ jobId, onComplete, onError }: DubbingProgressP
   const isCancelled = data.status === 'cancelled';
   const isPaused = data.status === 'paused';
   const outputFilename = data.output_path?.split(/[\\/]/).pop();
+  const pixverseEnabled = Boolean(data.pixverse_enabled);
+  const pixverseProvider =
+    data.pixverse_provider === 'pixverse'
+      ? t.progress.pixverseProvider
+      : data.pixverse_provider === 'local_fallback'
+        ? t.progress.localFallbackProvider
+        : data.pixverse_provider === 'pending'
+          ? t.progress.pixversePending
+          : null;
 
   // Use real progress from backend
   const progressValue = data.progress ?? (isCompleted ? 100 : isProcessing ? 50 : isFailed || isCancelled ? 0 : 0);
@@ -165,6 +177,23 @@ export const DubbingProgress = ({ jobId, onComplete, onError }: DubbingProgressP
               {data.status.toUpperCase()}
             </Badge>
           </CardTitle>
+          {(pixverseEnabled || pixverseProvider) && (
+            <div className="mt-3 flex flex-wrap gap-2">
+              <Badge className="bg-violet-500/15 text-violet-200 border-violet-500/30">
+                {t.progress.pixverseEnabled}
+              </Badge>
+              {pixverseProvider && (
+                <Badge className="bg-cyan-500/15 text-cyan-200 border-cyan-500/30">
+                  {pixverseProvider}
+                </Badge>
+              )}
+              {data.pixverse_fallback_used && (
+                <Badge className="bg-amber-500/15 text-amber-200 border-amber-500/30">
+                  {t.progress.localFallbackActive}
+                </Badge>
+              )}
+            </div>
+          )}
         </CardHeader>
         <CardContent className="pt-6 space-y-6">
           <div className="space-y-3">

@@ -1,12 +1,12 @@
 import { useState, useEffect, useRef, useMemo } from 'react';
-import { Sparkles, Search, ExternalLink, AlertTriangle, Film, Loader2 } from 'lucide-react';
+import { Sparkles, Search, ExternalLink, AlertTriangle, Film, Loader2, CheckCircle2, Wand2 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
 import { Badge } from '@/components/ui/badge';
 import { DubbingProgress } from '@/components/DubbingProgress';
 import { StudioOutputSettings } from '@/components/studio/StudioOutputSettings';
-import { StudioProjectPreview } from '@/components/studio/StudioProjectPreview';
+import { StudioProjectPreview, type SceneReviewCard } from '@/components/studio/StudioProjectPreview';
 import api from '@/lib/api';
 import { useI18n } from '@/i18n/I18nProvider';
 import { isTimeoutError, extractApiErrorMessage } from '@/lib/errors';
@@ -19,6 +19,7 @@ import {
 } from '@/lib/studioBrandStore';
 import type { AspectRatioValue } from '@/lib/aspectRatios';
 import { parseVoicesResponse, type Voice } from '@/lib/voices';
+import { parseStudioScenes } from '@/lib/studioScenes';
 
 interface ResearchSource {
   title: string;
@@ -33,11 +34,116 @@ interface ResearchVideoViewProps {
 }
 
 const DEFAULT_TARGET_DURATION = 45;
+type WizardStep = 1 | 2 | 3 | 4;
+
+function estimateSceneDuration(text: string): number {
+  const words = text.trim().split(/\s+/).filter(Boolean).length;
+  return Math.max(5, Math.min(8, Math.round(words / 7) || 6));
+}
+
+function buildPixVersePrompt(title: string, text: string, topic: string): string {
+  const normalized = `${title} ${text}`.replace(/\s+/g, ' ').trim();
+  const words = normalized.split(' ').filter(Boolean);
+  const subject = words.slice(0, 6).join(' ') || topic || 'main subject';
+  const action = words.slice(6, 18).join(' ') || normalized || 'subtle cinematic motion';
+  const style = topic ? `cinematic soft light, premium social video about ${topic}` : 'cinematic soft light';
+  return `Subject: ${subject}. Action: ${action}. Camera movement: slow push in. Lighting and style: ${style}. Context: ${normalized || topic || 'story beat'}.`;
+}
+
+function splitSceneText(text: string): [string, string] {
+  const cleaned = text.replace(/\s+/g, ' ').trim();
+  if (!cleaned) {
+    return ['Main visual beat.', 'Supporting visual beat.'];
+  }
+  const sentences = cleaned
+    .replace(/[!?]/g, '.')
+    .split('.')
+    .map((part) => part.trim())
+    .filter(Boolean);
+  if (sentences.length >= 2) {
+    const middle = Math.max(1, Math.floor(sentences.length / 2));
+    return [`${sentences.slice(0, middle).join('. ')}.`, `${sentences.slice(middle).join('. ')}.`];
+  }
+  const words = cleaned.split(' ');
+  const middle = Math.max(1, Math.floor(words.length / 2));
+  return [words.slice(0, middle).join(' '), words.slice(middle).join(' ') || cleaned];
+}
+
+function normalizeSceneReviewCards(script: string, topic: string): SceneReviewCard[] {
+  let cards = parseStudioScenes(script).map((scene, index) => ({
+    id: `scene_${index + 1}`,
+    title: scene.title || `Scene ${index + 1}`,
+    text: scene.body || scene.title || '',
+    prompt: buildPixVersePrompt(scene.title || `Scene ${index + 1}`, scene.body || scene.title || '', topic),
+    durationSeconds: estimateSceneDuration(scene.body || scene.title || ''),
+    approved: true,
+    forceFallback: false,
+    status: 'draft' as const,
+  }));
+
+  while (cards.length > 0 && cards.length < 4) {
+    let splitIndex = 0;
+    let longest = 0;
+    cards.forEach((card, index) => {
+      const size = card.text.length;
+      if (size > longest) {
+        longest = size;
+        splitIndex = index;
+      }
+    });
+    const target = cards[splitIndex];
+    const [leftText, rightText] = splitSceneText(target.text);
+    const replacements: SceneReviewCard[] = [
+      {
+        ...target,
+        id: `${target.id}_a`,
+        title: `${target.title} A`,
+        text: leftText,
+        prompt: buildPixVersePrompt(`${target.title} A`, leftText, topic),
+        durationSeconds: estimateSceneDuration(leftText),
+      },
+      {
+        ...target,
+        id: `${target.id}_b`,
+        title: `${target.title} B`,
+        text: rightText,
+        prompt: buildPixVersePrompt(`${target.title} B`, rightText, topic),
+        durationSeconds: estimateSceneDuration(rightText),
+      },
+    ];
+    cards = [...cards.slice(0, splitIndex), ...replacements, ...cards.slice(splitIndex + 1)];
+  }
+
+  if (cards.length > 8) {
+    const head = cards.slice(0, 7);
+    const tail = cards.slice(7);
+    const mergedText = tail.map((card) => card.text).join(' ').trim();
+    head.push({
+      id: 'scene_merged_tail',
+      title: 'Final Scene',
+      text: mergedText,
+      prompt: buildPixVersePrompt('Final Scene', mergedText, topic),
+      durationSeconds: estimateSceneDuration(mergedText),
+      approved: true,
+      forceFallback: false,
+      status: 'draft',
+    });
+    cards = head;
+  }
+
+  return cards.map((card, index) => ({
+    ...card,
+    id: `scene_${index + 1}`,
+    title: card.title || `Scene ${index + 1}`,
+  }));
+}
 
 export function ResearchVideoView({ targetLang, setTargetLang, onOpenBrandLayout }: ResearchVideoViewProps) {
   const { t } = useI18n();
   const [topic, setTopic] = useState('');
   const [script, setScript] = useState('');
+  const [wizardStep, setWizardStep] = useState<WizardStep>(1);
+  const [sceneReviewCards, setSceneReviewCards] = useState<SceneReviewCard[]>([]);
   const [sources, setSources] = useState<ResearchSource[]>([]);
   const [summary, setSummary] = useState('');
   const [confidence, setConfidence] = useState('');
@@ -117,6 +223,8 @@ export function ResearchVideoView({ targetLang, setTargetLang, onOpenBrandLayout
       setVerificationIssues(result.verification_issues || []);
       const suggested = result.suggested_duration_seconds || result.target_duration_seconds || DEFAULT_TARGET_DURATION;
       setTargetDuration(Math.min(60, Math.max(30, suggested)));
+      setSceneReviewCards([]);
+      setWizardStep(2);
     } catch (err) {
       setError(extractApiErrorMessage(err, t.researchVideo.researchFailed));
     } finally {
@@ -164,6 +272,10 @@ export function ResearchVideoView({ targetLang, setTargetLang, onOpenBrandLayout
       setError(t.researchVideo.needScript);
       return;
     }
+    if (!sceneReviewCards.length) {
+      setError(t.researchVideo.needSceneReview);
+      return;
+    }
     setIsRendering(true);
     setError(null);
     const formData = new FormData();
@@ -187,6 +299,20 @@ export function ResearchVideoView({ targetLang, setTargetLang, onOpenBrandLayout
     formData.append('studio_visual_mode', studioVisualMode);
     formData.append('studio_template', studioBrandStore.getState().studioTemplate);
     formData.append('studio_render_engine', studioRenderEngine);
+    formData.append(
+      'scene_review_json',
+      JSON.stringify(
+        sceneReviewCards.map((scene) => ({
+          sceneId: scene.id,
+          title: scene.title,
+          description: scene.text,
+          prompt: scene.prompt,
+          approved: scene.approved,
+          forceFallback: scene.forceFallback,
+          durationSeconds: scene.durationSeconds,
+        })),
+      ),
+    );
     appendStudioBrandToFormData(formData);
     try {
       const response = await api.post('/studio', formData);
@@ -200,6 +326,78 @@ export function ResearchVideoView({ targetLang, setTargetLang, onOpenBrandLayout
 
   const confidenceColor =
     confidence === 'high' ? 'text-green-400' : confidence === 'low' ? 'text-amber-400' : 'text-cyan-400';
+  const steps = [
+    { id: 1 as const, label: t.researchVideo.stepTopic },
+    { id: 2 as const, label: t.researchVideo.stepScript },
+    { id: 3 as const, label: t.researchVideo.stepScenes },
+    { id: 4 as const, label: t.researchVideo.stepRender },
+  ];
+
+  const handleApproveScript = () => {
+    if (!script.trim()) {
+      setError(t.researchVideo.needScript);
+      return;
+    }
+    setSceneReviewCards(normalizeSceneReviewCards(script, topic.trim()));
+    setError(null);
+    setWizardStep(3);
+  };
+
+  const handleScenePromptChange = (sceneId: string, prompt: string) => {
+    setSceneReviewCards((current) =>
+      current.map((scene) =>
+        scene.id === sceneId ? { ...scene, prompt, approved: true, status: 'draft' } : scene,
+      ),
+    );
+  };
+
+  const handleSceneKeep = (sceneId: string) => {
+    setSceneReviewCards((current) =>
+      current.map((scene) =>
+        scene.id === sceneId ? { ...scene, approved: true, forceFallback: false, status: 'kept' } : scene,
+      ),
+    );
+  };
+
+  const handleSceneRegenerate = (sceneId: string) => {
+    setSceneReviewCards((current) =>
+      current.map((scene) =>
+        scene.id === sceneId
+          ? {
+              ...scene,
+              prompt: buildPixVersePrompt(scene.title, scene.text, topic.trim()),
+              approved: true,
+              forceFallback: false,
+              status: 'regenerated',
+            }
+          : scene,
+      ),
+    );
+  };
+
+  const handleSceneFallback = (sceneId: string) => {
+    setSceneReviewCards((current) =>
+      current.map((scene) =>
+        scene.id === sceneId
+          ? {
+              ...scene,
+              approved: true,
+              forceFallback: !scene.forceFallback,
+              status: !scene.forceFallback ? 'fallback' : 'kept',
+            }
+          : scene,
+      ),
+    );
+  };
+
+  const handleContinueToRender = () => {
+    if (!sceneReviewCards.length) {
+      setError(t.researchVideo.needSceneReview);
+      return;
+    }
+    setError(null);
+    setWizardStep(4);
+  };
 
   if (jobId) {
     return (
@@ -230,44 +428,72 @@ export function ResearchVideoView({ targetLang, setTargetLang, onOpenBrandLayout
         <div className="bg-red-500/10 border border-red-500/20 rounded-lg p-4 text-sm text-red-300">{error}</div>
       )}
 
+      <div className="grid gap-3 md:grid-cols-4">
+        {steps.map((step) => {
+          const active = wizardStep === step.id;
+          const complete = wizardStep > step.id;
+          return (
+            <div
+              key={step.id}
+              className={`rounded-xl border px-4 py-3 text-sm ${
+                active
+                  ? 'border-cyan-400/50 bg-cyan-500/10 text-cyan-100'
+                  : complete
+                    ? 'border-emerald-500/30 bg-emerald-500/10 text-emerald-100'
+                    : 'border-white/10 bg-slate-900/70 text-slate-400'
+              }`}
+            >
+              <p className="text-[11px] uppercase tracking-[0.22em]">{t.researchVideo.stepLabel} {step.id}</p>
+              <div className="mt-1 flex items-center gap-2">
+                {complete ? <CheckCircle2 className="h-4 w-4" /> : <Wand2 className="h-4 w-4" />}
+                <span className="font-semibold">{step.label}</span>
+              </div>
+            </div>
+          );
+        })}
+      </div>
+
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 items-start">
         <div className="space-y-4">
-          
-            <div className="rounded-2xl border border-amber-500/20 bg-slate-900/80 p-5 space-y-4">
+          <div className="rounded-2xl border border-amber-500/20 bg-slate-900/80 p-5 space-y-4">
+            <div className="flex items-center justify-between gap-3">
               <Label className="text-sm font-semibold flex items-center gap-2">
                 <Search className="w-4 h-4 text-amber-400" />
                 {t.researchVideo.topicLabel}
               </Label>
-              <Textarea
-                value={topic}
-                onChange={(e) => setTopic(e.target.value)}
-                placeholder={t.researchVideo.topicPlaceholder}
-                className="min-h-[100px] bg-black/40 border-white/10"
-                disabled={isResearching}
-              />
-              <Button
-                className="w-full bg-gradient-to-r from-amber-600 to-orange-600 hover:from-amber-500 hover:to-orange-500"
-                disabled={isResearching}
-                onClick={() => void handleResearch()}
-              >
-                {isResearching ? (
-                  <span className="inline-flex items-center gap-2">
-                    <Loader2 className="w-4 h-4 animate-spin" />
-                    {phaseLabel(researchPhase)}
-                  </span>
-                ) : (
-                  t.researchVideo.researchBtn
-                )}
-              </Button>
-              {isResearching && researchStatus && (
-                <div className="rounded-lg border border-amber-500/30 bg-amber-500/10 px-3 py-2 text-xs text-amber-100">
-                  <p className="font-semibold uppercase tracking-wide text-amber-300/90">{phaseLabel(researchPhase)}</p>
-                  <p className="mt-1 text-slate-200">{researchStatus}</p>
-                </div>
-              )}
-              <p className="text-[11px] text-slate-500">{t.researchVideo.researchHint}</p>
+              <Badge className="bg-white/5 text-slate-300 border-white/10">{t.researchVideo.stepTopic}</Badge>
             </div>
-          
+            <Textarea
+              value={topic}
+              onChange={(e) => {
+                setTopic(e.target.value);
+              }}
+              placeholder={t.researchVideo.topicPlaceholder}
+              className="min-h-[100px] bg-black/40 border-white/10"
+              disabled={isResearching}
+            />
+            <Button
+              className="w-full bg-gradient-to-r from-amber-600 to-orange-600 hover:from-amber-500 hover:to-orange-500"
+              disabled={isResearching}
+              onClick={() => void handleResearch()}
+            >
+              {isResearching ? (
+                <span className="inline-flex items-center gap-2">
+                  <Loader2 className="w-4 h-4 animate-spin" />
+                  {phaseLabel(researchPhase)}
+                </span>
+              ) : (
+                t.researchVideo.researchBtn
+              )}
+            </Button>
+            {isResearching && researchStatus && (
+              <div className="rounded-lg border border-amber-500/30 bg-amber-500/10 px-3 py-2 text-xs text-amber-100">
+                <p className="font-semibold uppercase tracking-wide text-amber-300/90">{phaseLabel(researchPhase)}</p>
+                <p className="mt-1 text-slate-200">{researchStatus}</p>
+              </div>
+            )}
+            <p className="text-[11px] text-slate-500">{t.researchVideo.researchHint}</p>
+          </div>
 
           {summary && (
             <div className="rounded-xl border border-white/10 bg-black/30 p-4 space-y-2">
@@ -314,14 +540,20 @@ export function ResearchVideoView({ targetLang, setTargetLang, onOpenBrandLayout
             </div>
           )}
 
-          <div className="rounded-2xl border border-white/10 bg-slate-900/80 p-5 space-y-2">
+          <div className="rounded-2xl border border-white/10 bg-slate-900/80 p-5 space-y-3">
             <Label className="text-sm font-semibold flex items-center gap-2">
               <Sparkles className="w-4 h-4 text-purple-400" />
               {t.researchVideo.scriptLabel}
             </Label>
             <Textarea
               value={script}
-              onChange={(e) => setScript(e.target.value)}
+              onChange={(e) => {
+                setScript(e.target.value);
+                if (wizardStep > 2) {
+                  setWizardStep(2);
+                  setSceneReviewCards([]);
+                }
+              }}
               placeholder={t.researchVideo.scriptPlaceholder}
               className="min-h-[200px] bg-black/40 border-white/10 text-sm"
             />
@@ -331,7 +563,50 @@ export function ResearchVideoView({ targetLang, setTargetLang, onOpenBrandLayout
                 {t.common.seconds} ({t.researchVideo.targetShort})
               </p>
             )}
+            <div className="flex flex-wrap gap-3">
+              <Button
+                type="button"
+                className="bg-gradient-to-r from-purple-600 to-indigo-600"
+                disabled={!script.trim() || isResearching}
+                onClick={handleApproveScript}
+              >
+                {t.researchVideo.approveScript}
+              </Button>
+              {sceneReviewCards.length > 0 && (
+                <Button type="button" variant="outline" onClick={handleApproveScript}>
+                  {t.researchVideo.refreshSceneReview}
+                </Button>
+              )}
+            </div>
+            <p className="text-[11px] text-slate-500">{t.researchVideo.scriptApproveHint}</p>
           </div>
+
+          {wizardStep >= 3 && sceneReviewCards.length > 0 && (
+            <div className="rounded-2xl border border-cyan-500/20 bg-slate-900/80 p-5 space-y-3">
+              <div className="flex items-center justify-between gap-3">
+                <div>
+                  <p className="text-sm font-semibold text-cyan-100">{t.researchVideo.sceneReviewTitle}</p>
+                  <p className="text-[11px] text-slate-400">{t.researchVideo.sceneReviewHint}</p>
+                </div>
+                <Badge className="bg-cyan-500/15 text-cyan-200 border-cyan-500/30">
+                  {sceneReviewCards.length} {t.researchVideo.sceneCards}
+                </Badge>
+              </div>
+              <div className="grid grid-cols-2 gap-3 text-xs text-slate-400">
+                <div className="rounded-lg border border-white/10 bg-black/20 p-3">
+                  <p className="font-semibold text-slate-200">{t.researchVideo.sceneReviewReady}</p>
+                  <p>{t.researchVideo.sceneReviewReadyHint}</p>
+                </div>
+                <div className="rounded-lg border border-white/10 bg-black/20 p-3">
+                  <p className="font-semibold text-slate-200">{t.researchVideo.sceneFallbackSafe}</p>
+                  <p>{t.researchVideo.sceneFallbackSafeHint}</p>
+                </div>
+              </div>
+              <Button type="button" className="w-full bg-cyan-600 hover:bg-cyan-500" onClick={handleContinueToRender}>
+                {t.researchVideo.continueToRender}
+              </Button>
+            </div>
+          )}
         </div>
 
         <StudioProjectPreview
@@ -354,9 +629,15 @@ export function ResearchVideoView({ targetLang, setTargetLang, onOpenBrandLayout
           socialSubtitle={brand.socialSubtitle}
           socialAvatarUrl={socialAvatarPreview || undefined}
           onOpenBrandLayout={onOpenBrandLayout}
+          sceneReviewCards={sceneReviewCards}
+          onScenePromptChange={handleScenePromptChange}
+          onRegenerateScene={handleSceneRegenerate}
+          onKeepScene={handleSceneKeep}
+          onFallbackScene={handleSceneFallback}
         />
       </div>
 
+      {wizardStep >= 4 && (
       <div className="rounded-2xl border border-white/10 bg-slate-900/80 p-5 space-y-4">
         <h3 className="text-sm font-bold uppercase tracking-wider text-slate-400 flex items-center gap-2">
           <Film className="w-4 h-4" />
@@ -388,12 +669,13 @@ export function ResearchVideoView({ targetLang, setTargetLang, onOpenBrandLayout
         <p className="text-[11px] text-slate-500 leading-snug">{t.researchVideo.renderHint}</p>
         <Button
           className="w-full py-6 font-bold bg-gradient-to-r from-indigo-600 to-purple-600"
-          disabled={isRendering || !script.trim()}
+          disabled={isRendering || !script.trim() || !sceneReviewCards.length}
           onClick={() => void handleRender()}
         >
           {isRendering ? t.researchVideo.rendering : t.researchVideo.renderBtn}
         </Button>
       </div>
+      )}
     </div>
   );
 }
