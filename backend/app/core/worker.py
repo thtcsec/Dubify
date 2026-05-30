@@ -177,7 +177,7 @@ class BackgroundWorker:
         loop = asyncio.new_event_loop()
 
         try:
-            tts_service = TTSService(voice=voice_id, target_lang=target_lang)
+            tts_service = TTSService(voice=voice_id, target_lang=target_lang, provider=settings.STUDIO_TTS_PROVIDER)
             audio_path, srt_path = loop.run_until_complete(
                 tts_service.generate_studio_audio_with_subtitles(script, target_lang, job_id)
             )
@@ -243,17 +243,22 @@ class BackgroundWorker:
                 from app.services.studio_video_builder import build_html_scene_video
 
                 pixverse_clips_present = bool(payload.get("pixverse_clip_paths"))
+                pixverse_api_present = bool(settings.PIXVERSE_API_KEY)
                 job_manager.update_job(
                     job_id,
                     JobStatus.PROCESSING,
                     message=(
                         "Step 3/3: Rendering PixVerse storyboard..."
-                        if settings.ENABLE_PIXVERSE_PRODUCER and pixverse_clips_present
+                        if settings.ENABLE_PIXVERSE_PRODUCER and (pixverse_clips_present or pixverse_api_present)
                         else "Step 3/3: Rendering HTML scene slides..."
                     ),
                     progress=76,
                     pixverse_enabled=bool(settings.ENABLE_PIXVERSE_PRODUCER),
-                    pixverse_provider="pixverse_external" if (settings.ENABLE_PIXVERSE_PRODUCER and pixverse_clips_present) else "html_scenes",
+                    pixverse_provider=(
+                        "pixverse_external"
+                        if (settings.ENABLE_PIXVERSE_PRODUCER and pixverse_clips_present)
+                        else ("pixverse" if (settings.ENABLE_PIXVERSE_PRODUCER and pixverse_api_present) else "html_scenes")
+                    ),
                     pixverse_fallback_used=False,
                 )
                 success = build_html_scene_video(

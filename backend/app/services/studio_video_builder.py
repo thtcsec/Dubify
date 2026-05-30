@@ -174,6 +174,7 @@ def _mux_video_with_audio_and_subtitles(
     aspect_ratio: str,
     caption_y_pct: float | None,
     popup_timings: list[tuple[float, float, dict[str, str]]] | None,
+    metadata: dict[str, str] | None = None,
     progress_callback: Optional[Callable[[float], None]],
 ) -> bool:
     vf_parts: list[str] = []
@@ -209,6 +210,11 @@ def _mux_video_with_audio_and_subtitles(
         "-i",
         str(audio_path),
     ]
+    if metadata:
+        for key, value in metadata.items():
+            if not key or value is None:
+                continue
+            command.extend(["-metadata", f"{key}={str(value)}"])
     if vf_parts:
         command.extend(["-vf", ",".join(vf_parts), "-c:v", "libx264", "-preset", "fast", "-crf", str(settings.STUDIO_OUTPUT_CRF)])
     else:
@@ -273,13 +279,35 @@ def _build_pixverse_scene_video(
     for clip in pixverse_clip_paths or []:
         if clip:
             clip_paths.append(Path(clip))
+    has_api = bool(settings.PIXVERSE_API_KEY)
+
+    if has_api and not clip_paths:
+        try:
+            balance = adapter.get_credit_balance()
+            credits_total = int(balance.get("credit_monthly") or 0) + int(balance.get("credit_package") or 0)
+            logger.info(
+                "[PIXVERSE] Credit balance: monthly=%s package=%s (account_id=%s)",
+                balance.get("credit_monthly"),
+                balance.get("credit_package"),
+                balance.get("account_id"),
+            )
+            if credits_total <= 0:
+                raise RuntimeError(
+                    "PixVerse Platform API balance is 0 (Platform API credits are separate from PixVerse Web membership). "
+                    "Upload PixVerse MP4 clips per scene in Step 3, or subscribe/top up API credits at https://platform.pixverse.ai/billing."
+                )
+        except Exception as e:
+            raise
+
+    provider_key = "pixverse_external" if clip_paths else ("pixverse" if has_api else "local_fallback")
     if status_callback:
-        status_callback("pixverse_external" if clip_paths else "local_fallback", not bool(clip_paths))
+        status_callback(provider_key, not (bool(clip_paths) or has_api))
 
     temp_dir = settings.TEMP_DIR / f"pixverse_{output_path.stem}"
     temp_dir.mkdir(parents=True, exist_ok=True)
     topic_label = _resolved_topic_label(script, research_topic)
     segment_paths: list[Path] = []
+    shot_provenance: list[dict] = []
 
     for index, shot in enumerate(plan.shots):
         source_scene = _resolve_storyboard_match(shot.scene_id, storyboard_scenes)
@@ -298,30 +326,126 @@ def _build_pixverse_scene_video(
 
         if index < len(clip_paths) and clip_paths[index].exists():
             segment_paths.append(clip_paths[index])
+            shot_provenance.append(
+                {
+                    "shot_id": shot.shot_id,
+                    "scene_id": shot.scene_id,
+                    "duration_seconds": int(shot.duration_seconds),
+                    "source": "pixverse_external",
+                    "path": str(clip_paths[index]),
+                    "bytes": int(clip_paths[index].stat().st_size),
+                }
+            )
         else:
-            fallback_path = Path(adapter.local_fallback_asset(index, aspect_ratio))
-            if not fallback_path.is_absolute():
-                fallback_path = settings.BASE_DIR / fallback_path
-            if not _render_local_pixverse_clip(
-                output_path=fallback_path,
-                fallback_image=fallback_image,
-                duration=float(shot.duration_seconds),
-                aspect_ratio=aspect_ratio,
-                scene_index=index,
-            ):
-                return False
-            segment_paths.append(fallback_path)
+            force_fallback = bool(source_scene.force_fallback) if source_scene else False
+            if has_api and not force_fallback:
+                generated = temp_dir / f"pixverse_{shot.shot_id}.mp4"
+                try:
+                    logger.info(
+                        "[PIXVERSE] Generating %s (%ss, %s)",
+                        shot.shot_id,
+                        int(shot.duration_seconds),
+                        plan.aspect_ratio,
+                    )
+                    generated_path, prov = adapter.generate_text_to_video_with_provenance(
+                        prompt=shot.prompt,
+                        aspect_ratio=plan.aspect_ratio,
+                        duration_seconds=int(shot.duration_seconds),
+                        output_path=generated,
+                        model="v6",
+                        quality="720p",
+                        seed=0,
+                        water_mark=False,
+                    )
+                    logger.info("[PIXVERSE] Saved %s", str(generated_path))
+                    segment_paths.append(generated_path)
+                    shot_provenance.append(
+                        {
+                            "shot_id": shot.shot_id,
+                            "scene_id": shot.scene_id,
+                            "duration_seconds": int(shot.duration_seconds),
+                            "source": "pixverse_api",
+                            "path": str(generated_path),
+                            "pixverse": {
+                                "video_id": prov.get("video_id"),
+                                "trace_id": prov.get("trace_id"),
+                                "api_base": prov.get("api_base"),
+                                "result_url": prov.get("result_url"),
+                            },
+                        }
+                    )
+                except Exception:
+                    logger.exception("[PIXVERSE] Shot %s generation failed; using fallback clip.", shot.shot_id)
+                    force_fallback = True
+
+            if force_fallback or not has_api:
+                fallback_path = Path(adapter.local_fallback_asset(index, aspect_ratio))
+                if not fallback_path.is_absolute():
+                    fallback_path = settings.BASE_DIR / fallback_path
+                if not _render_local_pixverse_clip(
+                    output_path=fallback_path,
+                    fallback_image=fallback_image,
+                    duration=float(shot.duration_seconds),
+                    aspect_ratio=aspect_ratio,
+                    scene_index=index,
+                ):
+                    return False
+                segment_paths.append(fallback_path)
+                shot_provenance.append(
+                    {
+                        "shot_id": shot.shot_id,
+                        "scene_id": shot.scene_id,
+                        "duration_seconds": int(shot.duration_seconds),
+                        "source": "local_fallback",
+                        "path": str(fallback_path),
+                        "fallback_image": str(fallback_image),
+                    }
+                )
         if progress_callback:
             progress_callback(min(0.2 + ((index + 1) / max(len(plan.shots), 1)) * 0.45, 0.7))
 
     if not segment_paths:
         return False
+    if status_callback:
+        status_callback(
+            provider_key,
+            any(str(item.get("source")) == "local_fallback" for item in shot_provenance),
+        )
 
     video_only = temp_dir / "pixverse_merged.mp4"
+    total_segment_duration = sum(max(VideoService.get_duration(path), 0.0) for path in segment_paths)
+    transition_count = max(len(segment_paths) - 1, 0)
+    fade_seconds = 0.35
+    # Keep final length at or above the hackathon minimum instead of shaving time off with transitions.
+    if transition_count > 0 and (total_segment_duration - (fade_seconds * transition_count)) < 30.0:
+        fade_seconds = 0.0
     if len(segment_paths) == 1:
         shutil.copy2(segment_paths[0], video_only)
     else:
-        VideoService._xfade_chain(segment_paths, video_only, fade_seconds=0.45)
+        VideoService._xfade_chain(segment_paths, video_only, fade_seconds=fade_seconds)
+
+    api_shots = [item for item in shot_provenance if str(item.get("source")) == "pixverse_api"]
+    trace_hint = ""
+    if api_shots:
+        trace_hint = str((api_shots[0].get("pixverse") or {}).get("trace_id") or "")
+    provenance_out = output_path.with_suffix(".pixverse_provenance.json")
+    provenance_out.write_text(
+        json.dumps(
+            {
+                "provider": provider_key,
+                "aspect_ratio": aspect_ratio,
+                "output_path": str(output_path),
+                "video_only_path": str(video_only),
+                "audio_path": str(audio_path),
+                "subtitle_path": str(subtitle_path),
+                "transition_seconds": fade_seconds,
+                "shots": shot_provenance,
+            },
+            ensure_ascii=False,
+            indent=2,
+        ),
+        encoding="utf-8",
+    )
 
     if _mux_video_with_audio_and_subtitles(
         video_only=video_only,
@@ -331,6 +455,9 @@ def _build_pixverse_scene_video(
         aspect_ratio=aspect_ratio,
         caption_y_pct=layout_cfg.caption_y_pct,
         popup_timings=popup_timings,
+        metadata={
+            "comment": f"dubify_provider={provider_key};pixverse_api_shots={len(api_shots)};trace={trace_hint}".strip(";"),
+        },
         progress_callback=progress_callback,
     ):
         return True
@@ -396,7 +523,7 @@ def build_html_scene_video(
     popups = extract_popups_from_text(script)
     popup_timings = schedule_popup_timings(popups, audio_duration)
 
-    enable_pixverse = bool(settings.ENABLE_PIXVERSE_PRODUCER) and bool(pixverse_clip_paths)
+    enable_pixverse = bool(settings.ENABLE_PIXVERSE_PRODUCER) and (bool(pixverse_clip_paths) or bool(settings.PIXVERSE_API_KEY))
     if enable_pixverse:
         try:
             pixverse_ok = _build_pixverse_scene_video(
@@ -419,10 +546,10 @@ def build_html_scene_video(
             )
         except Exception as pixverse_err:
             logger.exception(f"[PIXVERSE] Critical error in PixVerse pipeline: {pixverse_err}")
-            pixverse_ok = False
+            raise
         if pixverse_ok:
             return True
-        logger.warning("PixVerse producer path failed; falling back to HTML scene render.")
+        raise RuntimeError("PixVerse producer path failed.")
     else:
         logger.info("Using standard HTML/Stock render path.")
 

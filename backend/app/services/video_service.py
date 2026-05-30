@@ -965,8 +965,23 @@ class VideoService:
             shutil.copy2(segment_paths[0], output_path)
             return
 
+        if fade_seconds <= 0.05:
+            list_file = output_path.parent / "concat_all.txt"
+            list_file.write_text(
+                "".join(f"file '{Path(path).resolve().as_posix()}'\n" for path in segment_paths),
+                encoding="utf-8",
+            )
+            subprocess.run(
+                ["ffmpeg", "-y", "-f", "concat", "-safe", "0", "-i", str(list_file), "-c", "copy", str(output_path)],
+                check=True,
+                stdout=subprocess.DEVNULL,
+                stderr=subprocess.PIPE,
+            )
+            list_file.unlink(missing_ok=True)
+            return
+
         current = segment_paths[0]
-        fade = max(0.35, min(fade_seconds, 1.0))
+        fade = max(0.05, min(fade_seconds, 1.0))
         transition_list = transitions or ["fade"] * (len(segment_paths) - 1)
         for index, nxt in enumerate(segment_paths[1:], start=1):
             merged = output_path.parent / f"xfade_{index}.mp4"

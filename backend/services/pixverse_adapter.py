@@ -8,7 +8,13 @@ plan so the demo can continue if the remote API fails or times out.
 from __future__ import annotations
 
 from dataclasses import dataclass, field, replace
+import json
+from pathlib import Path
 from typing import Callable, Iterable
+from uuid import uuid4
+
+import requests
+import time
 
 
 MIN_SHOTS = 4
@@ -70,11 +76,14 @@ class PixVerseAdapter:
     def __init__(
         self,
         api_key: str = "",
-        api_base: str = "https://api.pixverse.ai",
+        api_base: str = "https://app-api.pixverse.ai",
         timeout_seconds: int = 45,
     ) -> None:
         self.api_key = api_key.strip()
-        self.api_base = api_base.rstrip("/")
+        normalized_base = (api_base or "").rstrip("/")
+        if "api.pixverse.ai" in normalized_base and "app-api.pixverse.ai" not in normalized_base:
+            normalized_base = normalized_base.replace("api.pixverse.ai", "app-api.pixverse.ai")
+        self.api_base = normalized_base or "https://app-api.pixverse.ai"
         self.timeout_seconds = max(5, int(timeout_seconds))
 
     def build_plan(
@@ -145,6 +154,186 @@ class PixVerseAdapter:
             fallback_used=False,
             message="PixVerse multi-shot render plan completed.",
         )
+
+    def generate_text_to_video(
+        self,
+        *,
+        prompt: str,
+        aspect_ratio: str,
+        duration_seconds: int,
+        output_path: Path,
+        model: str = "v6",
+        quality: str = "720p",
+        seed: int = 0,
+        water_mark: bool = False,
+    ) -> Path:
+        path, _prov = self.generate_text_to_video_with_provenance(
+            prompt=prompt,
+            aspect_ratio=aspect_ratio,
+            duration_seconds=duration_seconds,
+            output_path=output_path,
+            model=model,
+            quality=quality,
+            seed=seed,
+            water_mark=water_mark,
+        )
+        return path
+
+    def generate_text_to_video_with_provenance(
+        self,
+        *,
+        prompt: str,
+        aspect_ratio: str,
+        duration_seconds: int,
+        output_path: Path,
+        model: str = "v6",
+        quality: str = "720p",
+        seed: int = 0,
+        water_mark: bool = False,
+    ) -> tuple[Path, dict]:
+        if not self.api_key:
+            raise RuntimeError("PixVerse API key is missing.")
+
+        output_path.parent.mkdir(parents=True, exist_ok=True)
+
+        trace_id = str(uuid4())
+        video_id, request_payload = self._submit_text_to_video(
+            prompt=prompt,
+            aspect_ratio=aspect_ratio,
+            duration_seconds=duration_seconds,
+            model=model,
+            quality=quality,
+            seed=seed,
+            water_mark=water_mark,
+            trace_id=trace_id,
+        )
+        url = self._poll_result_url(video_id, trace_id=trace_id)
+        self._download_video(url, output_path)
+        provenance = {
+            "provider": "pixverse",
+            "api_base": self.api_base,
+            "trace_id": trace_id,
+            "video_id": int(video_id),
+            "result_url": url,
+            "request": request_payload,
+            "output_path": str(output_path),
+            "output_bytes": int(output_path.stat().st_size) if output_path.exists() else 0,
+        }
+        sidecar = output_path.with_suffix(output_path.suffix + ".pixverse.json")
+        sidecar.write_text(json.dumps(provenance, ensure_ascii=False, indent=2), encoding="utf-8")
+        return output_path, provenance
+
+    def _headers(self, trace_id: str) -> dict[str, str]:
+        return {
+            "API-KEY": self.api_key,
+            "Ai-trace-id": trace_id,
+            "ai-trace-id": trace_id,
+            "Content-Type": "application/json",
+        }
+
+    def get_credit_balance(self) -> dict[str, int]:
+        if not self.api_key:
+            raise RuntimeError("PixVerse API key is missing.")
+
+        url = f"{self.api_base}/openapi/v2/account/balance"
+        trace_id = str(uuid4())
+        resp = requests.get(
+            url,
+            headers={"API-KEY": self.api_key, "Ai-trace-id": trace_id, "ai-trace-id": trace_id},
+            timeout=self.timeout_seconds,
+        )
+        resp.raise_for_status()
+        data = resp.json() or {}
+        if int(data.get("ErrCode", 0)) != 0:
+            raise RuntimeError(f"PixVerse balance failed: {data.get('ErrMsg') or data}")
+
+        payload = data.get("Resp") or {}
+        return {
+            "credit_monthly": int(payload.get("credit_monthly") or 0),
+            "credit_package": int(payload.get("credit_package") or 0),
+            "account_id": int(payload.get("account_id") or 0),
+        }
+
+    def _submit_text_to_video(
+        self,
+        *,
+        prompt: str,
+        aspect_ratio: str,
+        duration_seconds: int,
+        model: str,
+        quality: str,
+        seed: int,
+        water_mark: bool,
+        trace_id: str,
+    ) -> tuple[int, dict]:
+        url = f"{self.api_base}/openapi/v2/video/text/generate"
+        payload = {
+            "aspect_ratio": aspect_ratio,
+            "duration": int(duration_seconds),
+            "model": model,
+            "prompt": prompt[:5000],
+            "quality": quality,
+            "seed": int(seed),
+            "water_mark": bool(water_mark),
+            "generate_audio_switch": False,
+        }
+        resp = requests.post(url, headers=self._headers(trace_id), json=payload, timeout=self.timeout_seconds)
+        resp.raise_for_status()
+        data = resp.json() or {}
+        if int(data.get("ErrCode", 0)) != 0:
+            raise RuntimeError(f"PixVerse submit failed: {data.get('ErrMsg') or data}")
+        video_id = (data.get("Resp") or {}).get("video_id")
+        if video_id is None:
+            raise RuntimeError(f"PixVerse submit returned no video_id: {data}")
+        return int(video_id), payload
+
+    def _poll_result_url(self, video_id: int, *, trace_id: str) -> str:
+        url = f"{self.api_base}/openapi/v2/video/result/{video_id}"
+        deadline = time.time() + float(self.timeout_seconds)
+        last_status = None
+        last_err = ""
+
+        while time.time() < deadline:
+            resp = requests.get(
+                url,
+                headers={"API-KEY": self.api_key, "Ai-trace-id": trace_id, "ai-trace-id": trace_id},
+                timeout=self.timeout_seconds,
+            )
+            resp.raise_for_status()
+            data = resp.json() or {}
+            if int(data.get("ErrCode", 0)) != 0:
+                last_err = str(data.get("ErrMsg") or data)
+                time.sleep(1.5)
+                continue
+
+            detail = data.get("Resp") or {}
+            status = int(detail.get("status", 0) or 0)
+            last_status = status
+
+            if status == 1:
+                result_url = str(detail.get("url") or "").strip()
+                if not result_url:
+                    raise RuntimeError(f"PixVerse status success but empty url (video_id={video_id}).")
+                return result_url
+
+            if status in (7, 8):
+                raise RuntimeError(f"PixVerse generation failed (status={status}, video_id={video_id}).")
+
+            time.sleep(2.0)
+
+        raise TimeoutError(f"PixVerse timed out (video_id={video_id}, last_status={last_status}, err={last_err}).")
+
+    @staticmethod
+    def _download_video(url: str, output_path: Path) -> None:
+        with requests.get(url, stream=True, timeout=120) as resp:
+            resp.raise_for_status()
+            with open(output_path, "wb") as f:
+                for chunk in resp.iter_content(chunk_size=1024 * 256):
+                    if chunk:
+                        f.write(chunk)
+
+        if not output_path.exists() or output_path.stat().st_size == 0:
+            raise RuntimeError("PixVerse download produced empty file.")
 
     def local_fallback_asset(self, shot_index: int, aspect_ratio: str) -> str:
         """Return a deterministic local fallback target for smooth demo continuity."""

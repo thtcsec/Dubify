@@ -6,6 +6,7 @@ from pathlib import Path
 import shutil
 import os
 import logging
+import re
 from urllib.parse import urlparse
 import requests
 import json
@@ -27,6 +28,7 @@ from app.services.tts_service import TTSService
 from app.api.voice_catalog import voices_payload
 from app.core.gpu import gpu_info_dict
 from app.services.editor_service import EditorService
+from app.services.video_service import VideoService
 from app.utils.artifacts import remove_job_artifacts, resolve_artifact_paths
 from app.utils.uploads import save_upload_limited
 from app.utils.url_safety import validate_public_http_url
@@ -34,6 +36,78 @@ from app.utils.url_safety import validate_public_http_url
 logger = logging.getLogger(__name__)
 router = APIRouter()
 url_service = URLService()
+
+
+def _natural_media_sort_key(path: Path) -> list[object]:
+    parts = re.split(r"(\d+)", path.name.lower())
+    key: list[object] = []
+    for part in parts:
+        key.append(int(part) if part.isdigit() else part)
+    return key
+
+
+def _aspect_ratio_value(aspect_ratio: str) -> float:
+    left, right = (aspect_ratio or "16:9").split(":", 1)
+    return max(float(left), 1.0) / max(float(right), 1.0)
+
+
+def _clip_matches_aspect_ratio(width: int, height: int, aspect_ratio: str, tolerance: float = 0.08) -> bool:
+    if width <= 0 or height <= 0:
+        return False
+    actual = float(width) / float(height)
+    expected = _aspect_ratio_value(aspect_ratio)
+    return abs(actual - expected) <= tolerance
+
+
+def _validate_pixverse_clip_paths(paths: list[str], *, aspect_ratio: str) -> None:
+    if not paths:
+        return
+    if len(paths) < 4 or len(paths) > 8:
+        raise HTTPException(
+            status_code=400,
+            detail="Hackathon PixVerse path requires 4-8 clips. Please provide 4-8 MP4 shots.",
+        )
+
+    total_duration = 0.0
+    for raw_path in paths:
+        clip_path = Path(raw_path)
+        if not clip_path.exists():
+            raise HTTPException(status_code=400, detail=f"PixVerse clip not found: {clip_path.name}")
+        try:
+            width, height = VideoService.get_video_size(clip_path)
+            duration = VideoService.get_duration(clip_path)
+        except Exception as exc:
+            raise HTTPException(
+                status_code=400,
+                detail=f"Could not inspect PixVerse clip '{clip_path.name}'. Make sure it is a valid MP4 video.",
+            ) from exc
+
+        if duration < 4.0 or duration > 9.0:
+            raise HTTPException(
+                status_code=400,
+                detail=(
+                    f"PixVerse clip '{clip_path.name}' is {duration:.1f}s. "
+                    "For hackathon flow, each shot should stay around 5-8 seconds."
+                ),
+            )
+        if not _clip_matches_aspect_ratio(width, height, aspect_ratio):
+            raise HTTPException(
+                status_code=400,
+                detail=(
+                    f"PixVerse clip '{clip_path.name}' has aspect {width}x{height}, "
+                    f"which does not match the selected project ratio {aspect_ratio}."
+                ),
+            )
+        total_duration += duration
+
+    if total_duration < 30.0:
+        raise HTTPException(
+            status_code=400,
+            detail=(
+                f"Total PixVerse clip duration is only {total_duration:.1f}s. "
+                "Hackathon submission needs a final video of at least 30 seconds."
+            ),
+        )
 
 
 # ─── Dubbing Endpoints ──────────────────────────────────────────────────────
@@ -108,6 +182,7 @@ async def create_studio_video(
     image: Optional[UploadFile] = File(None),
     image_url: Optional[str] = Form(None),
     pixverse_clips: list[UploadFile] = File([]),
+    pixverse_clip_dir: str = Form(""),
     text: str = Form(...),
     target_lang: str = Form("vi"),
     voice_id: str = Form("vi-VN-HoaiMyNeural"),
@@ -190,12 +265,29 @@ async def create_studio_video(
         social_avatar_path = str(saved)
 
     pixverse_clip_paths: list[str] = []
+    clip_dir = (pixverse_clip_dir or "").strip()
+    if clip_dir:
+        safe_name = "".join(ch for ch in clip_dir if ch.isalnum() or ch in {"_", "-"}).strip()
+        if safe_name != clip_dir:
+            raise HTTPException(status_code=400, detail="pixverse_clip_dir contains invalid characters.")
+        if safe_name not in {"pixverse_smoke"}:
+            raise HTTPException(status_code=400, detail="pixverse_clip_dir is not allowed.")
+        import_dir = settings.INPUT_DIR / safe_name
+        if not import_dir.exists():
+            raise HTTPException(status_code=400, detail=f"pixverse_clip_dir not found: {safe_name}")
+        candidates = sorted(import_dir.glob("*.mp4"), key=_natural_media_sort_key)
+        if len(candidates) < 1:
+            raise HTTPException(status_code=400, detail=f"No .mp4 clips found in pixverse_clip_dir: {safe_name}")
+        pixverse_clip_paths.extend([str(p) for p in candidates])
+
     for index, clip in enumerate(pixverse_clips or []):
         if clip is None or not (clip.filename or "").strip():
             continue
         saved = settings.INPUT_DIR / f"{job_id}_pixverse_{index:02d}_{Path(clip.filename).name}"
         await save_upload_limited(clip, saved, MAX_UPLOAD_SIZE)
         pixverse_clip_paths.append(str(saved))
+
+    _validate_pixverse_clip_paths(pixverse_clip_paths, aspect_ratio=aspect_ratio)
 
     allowed_templates = {"tiktok_news", "tiktok_news_pill", "news_scene", "pixelle_story"}
     if studio_template not in allowed_templates:

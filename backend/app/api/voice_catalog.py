@@ -4,6 +4,8 @@ from __future__ import annotations
 
 from typing import Any
 
+from app.core.config import settings
+
 # category: vi = Vietnamese specialist, en = English specialist, other = more languages
 VOICE_CATALOG: list[dict[str, Any]] = [
     # ── Vietnamese specialists ──
@@ -70,7 +72,18 @@ VOICE_GROUPS = [
 
 
 def voices_payload() -> dict[str, Any]:
+    voices = list(VOICE_CATALOG)
+    groups = list(VOICE_GROUPS)
+
+    if getattr(settings, "ELEVENLABS_API_KEY", ""):
+        groups.insert(0, {"id": "pro", "label": "Pro voices", "label_en": "Pro voices"})
+        voices = [
+            {"id": "elevenlabs:21m00Tcm4TlvDq8ikWAM", "name": "Rachel (ElevenLabs)", "lang": "multi", "gender": "Female", "category": "pro", "accent": "Multi", "style": "Pro"},
+            {"id": "elevenlabs:EXAVITQu4vr4xnSDxMaL", "name": "Bella (ElevenLabs)", "lang": "multi", "gender": "Female", "category": "pro", "accent": "Multi", "style": "Pro"},
+            {"id": "elevenlabs:ErXwobaYiN019PkySvjV", "name": "Antoni (ElevenLabs)", "lang": "multi", "gender": "Male", "category": "pro", "accent": "Multi", "style": "Pro"},
+        ] + voices
+
     return {
-        "voices": VOICE_CATALOG,
-        "groups": VOICE_GROUPS,
+        "voices": voices,
+        "groups": groups,
     }

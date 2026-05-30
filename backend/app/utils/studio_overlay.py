@@ -57,7 +57,7 @@ def parse_studio_layout(payload: dict[str, Any], *, aspect_ratio: str = "9:16") 
         footer_y_pct=max(50.0, min(_pct(payload.get("footer_y_pct"), defaults.footer_y_pct), 95.0)),
         social_left_pct=max(0.0, min(_pct(payload.get("social_left_pct"), defaults.social_left_pct), 80.0)),
         social_bottom_pct=max(1.0, min(_pct(payload.get("social_bottom_pct"), defaults.social_bottom_pct), 92.0)),
-        caption_y_pct=max(22.0, min(_pct(payload.get("caption_y_pct"), defaults.caption_y_pct), 88.0)),
+        caption_y_pct=max(22.0, min(_pct(payload.get("caption_y_pct"), defaults.caption_y_pct), 85.0)),
     )
 
 

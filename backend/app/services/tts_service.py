@@ -426,46 +426,86 @@ class TTSService:
         chunk_paths: list[Path] = []
         vtt_lines = ["WEBVTT", ""]
         timeline = 0.0
+        provider_name = (self.provider or "edge").strip().lower()
+        if provider_name == "auto":
+            provider_name = "edge"
+        if self.voice.startswith("elevenlabs:"):
+            provider_name = "elevenlabs"
 
-        for index, chunk in enumerate(chunks):
-            if not chunk.strip():
-                continue
-            chunk_audio = temp_dir / f"chunk_{index:03d}.mp3"
-            chunk_vtt = temp_dir / f"chunk_{index:03d}.vtt"
-            # Studio builds VTT from chunk durations — Edge subtitles per chunk are not needed.
-            ok = await self._edge_tts_subprocess(
-                chunk, self.voice, chunk_audio, subtitle_path=None, max_chars=None
-            )
-            if not ok:
-                await asyncio.sleep(0.8)
-                ok = await self._edge_tts_subprocess(
-                    chunk, self.voice, chunk_audio, subtitle_path=None, max_chars=100, retries=3
-                )
-            if not ok:
-                shorter = self._edge_safe_text(chunk, max_chars=80)
-                if shorter and shorter != chunk:
+        eleven_voice_id = settings.ELEVENLABS_DEFAULT_VOICE_ID
+        if self.voice.startswith("elevenlabs:"):
+            eleven_voice_id = self.voice.split(":", 1)[1].strip() or settings.ELEVENLABS_DEFAULT_VOICE_ID
+
+        async def synthesize_with_provider(name: str) -> tuple[list[Path], list[str]]:
+            paths: list[Path] = []
+            lines = ["WEBVTT", ""]
+            t = 0.0
+
+            eleven_provider = None
+            if name == "elevenlabs":
+                from app.services.tts_providers.elevenlabs_provider import ElevenLabsTTSProvider
+
+                eleven_provider = ElevenLabsTTSProvider()
+                if not eleven_provider.is_available():
+                    raise RuntimeError("ElevenLabs provider is not available.")
+
+            for index, chunk in enumerate(chunks):
+                if not chunk.strip():
+                    continue
+                chunk_vtt = temp_dir / f"chunk_{index:03d}.vtt"
+                ok = False
+
+                if name == "elevenlabs" and eleven_provider is not None:
+                    chunk_audio = temp_dir / f"chunk_{index:03d}.wav"
+                    ok = await eleven_provider.synthesize(chunk, eleven_voice_id, chunk_audio, speed=1.0)
+                    if ok:
+                        self._write_basic_vtt(chunk, chunk_audio, chunk_vtt)
+                else:
+                    chunk_audio = temp_dir / f"chunk_{index:03d}.mp3"
                     ok = await self._edge_tts_subprocess(
-                        shorter, self.voice, chunk_audio, subtitle_path=None, max_chars=None, retries=2
+                        chunk, self.voice, chunk_audio, subtitle_path=None, max_chars=None
                     )
-            if not ok:
-                ok = await self._generate_local_audio(chunk, chunk_audio.with_suffix(".wav"))
-                if ok:
-                    chunk_audio = chunk_audio.with_suffix(".wav")
-                    self._write_basic_vtt(chunk, chunk_audio, chunk_vtt)
-            if not ok or not chunk_audio.exists():
-                logger.warning("Studio TTS chunk %d failed, skipping", index)
-                continue
+                    if not ok:
+                        await asyncio.sleep(0.8)
+                        ok = await self._edge_tts_subprocess(
+                            chunk, self.voice, chunk_audio, subtitle_path=None, max_chars=100, retries=3
+                        )
+                    if not ok:
+                        shorter = self._edge_safe_text(chunk, max_chars=80)
+                        if shorter and shorter != chunk:
+                            ok = await self._edge_tts_subprocess(
+                                shorter, self.voice, chunk_audio, subtitle_path=None, max_chars=None, retries=2
+                            )
+                    if not ok:
+                        ok = await self._generate_local_audio(chunk, chunk_audio.with_suffix(".wav"))
+                        if ok:
+                            chunk_audio = chunk_audio.with_suffix(".wav")
+                            self._write_basic_vtt(chunk, chunk_audio, chunk_vtt)
 
-            if index + 1 < len(chunks):
-                await asyncio.sleep(0.35)
+                if not ok or not chunk_audio.exists():
+                    raise RuntimeError(f"TTS chunk failed (index={index}, provider={name}).")
 
-            dur = max(VideoService.get_duration(chunk_audio), 0.05)
-            chunk_paths.append(chunk_audio)
-            vtt_lines.append(str(len(chunk_paths)))
-            vtt_lines.append(f"{_studio_vtt_ts(timeline)} --> {_studio_vtt_ts(timeline + dur)}")
-            vtt_lines.append(chunk)
-            vtt_lines.append("")
-            timeline += dur
+                if index + 1 < len(chunks):
+                    await asyncio.sleep(0.35)
+
+                dur = max(VideoService.get_duration(chunk_audio), 0.05)
+                paths.append(chunk_audio)
+                lines.append(str(len(paths)))
+                lines.append(f"{_studio_vtt_ts(t)} --> {_studio_vtt_ts(t + dur)}")
+                lines.append(chunk)
+                lines.append("")
+                t += dur
+
+            return paths, lines
+
+        try:
+            chunk_paths, vtt_lines = await synthesize_with_provider(provider_name)
+        except Exception as err:
+            if provider_name == "edge" and settings.ELEVENLABS_API_KEY:
+                logger.warning("Edge-TTS unstable; retrying full voiceover with ElevenLabs. Error: %s", err)
+                chunk_paths, vtt_lines = await synthesize_with_provider("elevenlabs")
+            else:
+                raise
 
         if not chunk_paths:
             raise RuntimeError("Studio TTS produced no audio chunks.")

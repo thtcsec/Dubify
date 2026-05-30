@@ -61,7 +61,7 @@ class Settings(BaseSettings):
     FAL_KEY: str = ""
     FAL_AI_API_KEY: str = ""
     PIXVERSE_API_KEY: str = ""
-    PIXVERSE_API_BASE: str = "https://api.pixverse.ai"
+    PIXVERSE_API_BASE: str = "https://app-api.pixverse.ai"
     PIXVERSE_TIMEOUT_SECONDS: int = 45
     ENABLE_PIXVERSE_PRODUCER: bool = True
     PEXELS_API_KEY: str = ""
@@ -76,6 +76,8 @@ class Settings(BaseSettings):
     SUPERTONIC_API_URL: str = ""  # Supertonic TTS server (e.g. http://localhost:7788)
     ELEVENLABS_API_KEY: str = ""
     ELEVENLABS_MODEL: str = "eleven_multilingual_v2"
+    ELEVENLABS_DEFAULT_VOICE_ID: str = "21m00Tcm4TlvDq8ikWAM"
+    STUDIO_TTS_PROVIDER: str = "edge"
     # Audio preprocessing
     ENABLE_AUDIO_PREPROCESSING: bool = False  # UVR vocal separation before ASR
     AUDIO_PREPROCESS_MODEL: str = "UVR-MDX-NET-Inst_HQ_4"
