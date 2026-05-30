@@ -314,6 +314,7 @@ export const vi = {
     cancelledLabel: 'Đã hủy',
     pixverseEnabled: 'Bật PixVerse',
     pixverseProvider: 'Producer PixVerse',
+    pixverseCliProvider: 'PixVerse CLI (tự chạy)',
     pixverseExternalProvider: 'Clip PixVerse (upload)',
     localFallbackProvider: 'Producer fallback local',
     pixversePending: 'Đang chọn producer',

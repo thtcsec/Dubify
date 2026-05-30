@@ -142,6 +142,8 @@ export const DubbingProgress = ({ jobId, onComplete, onError }: DubbingProgressP
   const pixverseProvider =
     data.pixverse_provider === 'pixverse'
       ? t.progress.pixverseProvider
+      : data.pixverse_provider === 'pixverse_cli'
+        ? t.progress.pixverseCliProvider
       : data.pixverse_provider === 'pixverse_external'
         ? t.progress.pixverseExternalProvider
       : data.pixverse_provider === 'local_fallback'

@@ -259,7 +259,7 @@ def _build_pixverse_scene_video(
     layout_cfg,
     popup_timings: list[tuple[float, float, dict[str, str]]] | None,
     scene_review_json: str,
-    status_callback: Optional[Callable[[str, bool], None]],
+    status_callback: Optional[Callable[..., None]],
     pixverse_clip_paths: list[str] | None = None,
 ) -> bool:
     from app.services.scene_image_service import resolve_scene_image
@@ -280,34 +280,176 @@ def _build_pixverse_scene_video(
         if clip:
             clip_paths.append(Path(clip))
     has_api = bool(settings.PIXVERSE_API_KEY)
+    api_credits_ok = False
+    enable_cli = bool(getattr(settings, "ENABLE_PIXVERSE_CLI_PRODUCER", False))
+    use_cli = False
 
     if has_api and not clip_paths:
-        try:
-            balance = adapter.get_credit_balance()
-            credits_total = int(balance.get("credit_monthly") or 0) + int(balance.get("credit_package") or 0)
-            logger.info(
-                "[PIXVERSE] Credit balance: monthly=%s package=%s (account_id=%s)",
-                balance.get("credit_monthly"),
-                balance.get("credit_package"),
-                balance.get("account_id"),
-            )
-            if credits_total <= 0:
-                raise RuntimeError(
-                    "PixVerse Platform API balance is 0 (Platform API credits are separate from PixVerse Web membership). "
-                    "Upload PixVerse MP4 clips per scene in Step 3, or subscribe/top up API credits at https://platform.pixverse.ai/billing."
-                )
-        except Exception as e:
-            raise
+        balance = adapter.get_credit_balance()
+        credits_total = int(balance.get("credit_monthly") or 0) + int(balance.get("credit_package") or 0)
+        logger.info(
+            "[PIXVERSE] Credit balance: monthly=%s package=%s (account_id=%s)",
+            balance.get("credit_monthly"),
+            balance.get("credit_package"),
+            balance.get("account_id"),
+        )
+        api_credits_ok = credits_total > 0
 
-    provider_key = "pixverse_external" if clip_paths else ("pixverse" if has_api else "local_fallback")
+    if not clip_paths and enable_cli and not api_credits_ok:
+        use_cli = True
+
+    if not clip_paths and not api_credits_ok and not use_cli:
+        if has_api:
+            raise RuntimeError(
+                "PixVerse Platform API balance is 0 (Platform API credits are separate from PixVerse Web membership). "
+                "Enable PixVerse CLI producer (uses PixVerse Web credits), upload PixVerse MP4 clips per scene in Step 3, "
+                "or subscribe/top up API credits at https://platform.pixverse.ai/billing."
+            )
+        raise RuntimeError(
+            "PixVerse is not configured. Upload PixVerse MP4 clips per scene in Step 3, or enable PixVerse CLI producer "
+            "(requires PixVerse CLI login: pixverse auth login)."
+        )
+
+    provider_key = (
+        "pixverse_external"
+        if clip_paths
+        else ("pixverse" if (has_api and api_credits_ok) else ("pixverse_cli" if use_cli else "local_fallback"))
+    )
     if status_callback:
-        status_callback(provider_key, not (bool(clip_paths) or has_api))
+        status_callback(provider_key, False, "Init", 0.0)
 
     temp_dir = settings.TEMP_DIR / f"pixverse_{output_path.stem}"
     temp_dir.mkdir(parents=True, exist_ok=True)
     topic_label = _resolved_topic_label(script, research_topic)
     segment_paths: list[Path] = []
     shot_provenance: list[dict] = []
+
+    if use_cli and not clip_paths:
+        import os
+        import time
+
+        def _cli_prefix() -> list[str]:
+            if shutil.which("pixverse"):
+                return ["pixverse"]
+            return ["npx", "-y", "pixverse@1.1.10"]
+
+        def _cli_run(args: list[str]) -> str:
+            env = os.environ.copy()
+            env.pop("PIXVERSE_API_BASE", None)
+            proc = subprocess.run(
+                _cli_prefix() + args,
+                cwd=str(settings.TEMP_DIR),
+                env=env,
+                capture_output=True,
+                text=True,
+            )
+            if proc.returncode != 0:
+                raise RuntimeError((proc.stderr or proc.stdout or "").strip()[:1200])
+            return (proc.stdout or "").strip()
+
+        if status_callback:
+            status_callback("pixverse_cli", False, "Auth check", 0.02)
+        auth_raw = _cli_run(["auth", "status", "--json"])
+        auth = json.loads(auth_raw or "{}")
+        if not auth.get("authenticated"):
+            raise RuntimeError("PixVerse CLI is not logged in. Run: pixverse auth login")
+
+        shot_ids: list[str] = []
+        for index, shot in enumerate(plan.shots):
+            if status_callback:
+                status_callback(
+                    "pixverse_cli",
+                    False,
+                    f"Submitting generation ({index+1}/{len(plan.shots)})",
+                    0.08 + (0.22 * ((index + 1) / max(len(plan.shots), 1))),
+                )
+            raw = _cli_run(
+                [
+                    "create",
+                    "video",
+                    "--prompt",
+                    shot.prompt,
+                    "--model",
+                    "v6",
+                    "--quality",
+                    "720p",
+                    "--aspect-ratio",
+                    plan.aspect_ratio,
+                    "--duration",
+                    str(int(shot.duration_seconds)),
+                    "--no-audio",
+                    "--no-wait",
+                    "--json",
+                ]
+            )
+            payload = json.loads(raw or "{}")
+            vid = str(payload.get("video_id") or "").strip()
+            if not vid:
+                raise RuntimeError(f"PixVerse CLI create returned no video_id. Raw={raw[:500]}")
+            shot_ids.append(vid)
+
+        deadline = time.time() + float(getattr(settings, "PIXVERSE_CLI_TIMEOUT_SECONDS", 900))
+        while True:
+            status_raw = _cli_run(["task", "status", "--ids", ",".join(shot_ids), "--type", "video", "--json"])
+            statuses = json.loads(status_raw or "{}")
+            completed = 0
+            for vid in shot_ids:
+                st = ((statuses.get(str(vid)) or {}).get("status") or "").strip()
+                if st.lower() == "completed":
+                    completed += 1
+            if status_callback:
+                status_callback(
+                    "pixverse_cli",
+                    False,
+                    f"Waiting for generation ({completed}/{len(shot_ids)})",
+                    0.32 + 0.28 * (completed / max(len(shot_ids), 1)),
+                )
+            if completed == len(shot_ids):
+                break
+            if time.time() > deadline:
+                raise RuntimeError("PixVerse CLI generation timed out.")
+            time.sleep(6)
+
+        clip_root = temp_dir / "pixverse_cli_clips"
+        clip_root.mkdir(parents=True, exist_ok=True)
+        clip_paths = []
+        for index, vid in enumerate(shot_ids):
+            if status_callback:
+                status_callback(
+                    "pixverse_cli",
+                    False,
+                    f"Downloading clip ({index+1}/{len(shot_ids)})",
+                    0.62 + (0.28 * ((index + 1) / max(len(shot_ids), 1))),
+                )
+            shot_dir = clip_root / f"shot_{index:03d}"
+            shot_dir.mkdir(parents=True, exist_ok=True)
+            _cli_run(["asset", "download", str(vid), "--dest", str(shot_dir)])
+            mp4s = sorted(shot_dir.glob("*.mp4"), key=lambda p: p.stat().st_mtime, reverse=True)
+            if not mp4s:
+                raise RuntimeError(f"PixVerse CLI download produced no mp4 for video_id={vid}")
+            final_path = clip_root / f"clip_{index:03d}.mp4"
+            if status_callback:
+                status_callback(
+                    "pixverse_cli",
+                    False,
+                    f"Naming clip_{index:03d}.mp4",
+                    0.90,
+                )
+            shutil.move(str(mp4s[0]), str(final_path))
+            clip_paths.append(final_path)
+            shot_provenance.append(
+                {
+                    "shot_id": plan.shots[index].shot_id,
+                    "scene_id": plan.shots[index].scene_id,
+                    "duration_seconds": int(plan.shots[index].duration_seconds),
+                    "source": "pixverse_cli",
+                    "path": str(final_path),
+                    "pixverse": {"video_id": str(vid)},
+                    "bytes": int(final_path.stat().st_size),
+                }
+            )
+        if status_callback:
+            status_callback("pixverse_cli", False, "Clips ready", 0.92)
 
     for index, shot in enumerate(plan.shots):
         source_scene = _resolve_storyboard_match(shot.scene_id, storyboard_scenes)
@@ -326,19 +468,27 @@ def _build_pixverse_scene_video(
 
         if index < len(clip_paths) and clip_paths[index].exists():
             segment_paths.append(clip_paths[index])
-            shot_provenance.append(
-                {
-                    "shot_id": shot.shot_id,
-                    "scene_id": shot.scene_id,
-                    "duration_seconds": int(shot.duration_seconds),
-                    "source": "pixverse_external",
-                    "path": str(clip_paths[index]),
-                    "bytes": int(clip_paths[index].stat().st_size),
-                }
-            )
+            if not any(str(p.get("shot_id")) == str(shot.shot_id) for p in shot_provenance):
+                shot_provenance.append(
+                    {
+                        "shot_id": shot.shot_id,
+                        "scene_id": shot.scene_id,
+                        "duration_seconds": int(shot.duration_seconds),
+                        "source": "pixverse_external",
+                        "path": str(clip_paths[index]),
+                        "bytes": int(clip_paths[index].stat().st_size),
+                    }
+                )
         else:
             force_fallback = bool(source_scene.force_fallback) if source_scene else False
-            if has_api and not force_fallback:
+            if (has_api and api_credits_ok) and not force_fallback:
+                if status_callback:
+                    status_callback(
+                        "pixverse",
+                        False,
+                        f"Generating shot ({index+1}/{len(plan.shots)})",
+                        0.10 + (0.70 * ((index + 1) / max(len(plan.shots), 1))),
+                    )
                 generated = temp_dir / f"pixverse_{shot.shot_id}.mp4"
                 try:
                     logger.info(
@@ -401,8 +551,8 @@ def _build_pixverse_scene_video(
                         "fallback_image": str(fallback_image),
                     }
                 )
-        if progress_callback:
-            progress_callback(min(0.2 + ((index + 1) / max(len(plan.shots), 1)) * 0.45, 0.7))
+        if status_callback and provider_key == "pixverse_external":
+            status_callback(provider_key, False, f"Using provided clip ({index+1}/{len(plan.shots)})", 0.20 + (0.70 * ((index + 1) / max(len(plan.shots), 1))))
 
     if not segment_paths:
         return False
@@ -410,6 +560,8 @@ def _build_pixverse_scene_video(
         status_callback(
             provider_key,
             any(str(item.get("source")) == "local_fallback" for item in shot_provenance),
+            "Merging clips",
+            0.94,
         )
 
     video_only = temp_dir / "pixverse_merged.mp4"
@@ -423,6 +575,13 @@ def _build_pixverse_scene_video(
         shutil.copy2(segment_paths[0], video_only)
     else:
         VideoService._xfade_chain(segment_paths, video_only, fade_seconds=fade_seconds)
+    if status_callback:
+        status_callback(
+            provider_key,
+            any(str(item.get("source")) == "local_fallback" for item in shot_provenance),
+            "Muxing audio + subtitles",
+            0.97,
+        )
 
     api_shots = [item for item in shot_provenance if str(item.get("source")) == "pixverse_api"]
     trace_hint = ""
@@ -460,6 +619,13 @@ def _build_pixverse_scene_video(
         },
         progress_callback=progress_callback,
     ):
+        if status_callback:
+            status_callback(
+                provider_key,
+                any(str(item.get("source")) == "local_fallback" for item in shot_provenance),
+                "Done",
+                1.0,
+            )
         return True
 
     return False
@@ -482,7 +648,7 @@ def build_html_scene_video(
     wiki_thumbnail_url: str = "",
     use_scene_images: bool = True,
     scene_review_json: str = "",
-    status_callback: Optional[Callable[[str, bool], None]] = None,
+    status_callback: Optional[Callable[..., None]] = None,
     pixverse_clip_paths: list[str] | None = None,
 ) -> bool:
     scenes = parse_studio_scenes(script)
@@ -523,7 +689,9 @@ def build_html_scene_video(
     popups = extract_popups_from_text(script)
     popup_timings = schedule_popup_timings(popups, audio_duration)
 
-    enable_pixverse = bool(settings.ENABLE_PIXVERSE_PRODUCER) and (bool(pixverse_clip_paths) or bool(settings.PIXVERSE_API_KEY))
+    enable_pixverse = bool(settings.ENABLE_PIXVERSE_PRODUCER) and (
+        bool(pixverse_clip_paths) or bool(settings.PIXVERSE_API_KEY) or bool(getattr(settings, "ENABLE_PIXVERSE_CLI_PRODUCER", False))
+    )
     if enable_pixverse:
         try:
             pixverse_ok = _build_pixverse_scene_video(

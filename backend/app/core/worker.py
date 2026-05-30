@@ -178,8 +178,42 @@ class BackgroundWorker:
 
         try:
             tts_service = TTSService(voice=voice_id, target_lang=target_lang, provider=settings.STUDIO_TTS_PROVIDER)
+
+            def update_studio_tts_progress(phase: str, done: int, total: int) -> None:
+                try:
+                    total_i = max(int(total or 0), 1)
+                    done_i = max(0, min(int(done or 0), total_i))
+                except Exception:
+                    total_i = 1
+                    done_i = 0
+                phase_key = (phase or "").strip().lower()
+                phase_label = (
+                    "Synthesizing"
+                    if phase_key == "synthesize"
+                    else ("Concatenating" if phase_key == "concat" else (phase or "Working"))
+                )
+                progress = None
+                if phase_key == "synthesize":
+                    progress = 35 + ((done_i / total_i) * 28)
+                elif phase_key == "concat":
+                    progress = 63 + ((done_i / total_i) * 7)
+                msg = f"Step 2/3: Voiceover (TTS) — {phase_label}"
+                if phase_key == "synthesize":
+                    msg = f"{msg} ({done_i}/{total_i})"
+                job_manager.update_job(
+                    job_id,
+                    JobStatus.PROCESSING,
+                    message=msg,
+                    progress=(round(progress, 1) if progress is not None else None),
+                )
+
             audio_path, srt_path = loop.run_until_complete(
-                tts_service.generate_studio_audio_with_subtitles(script, target_lang, job_id)
+                tts_service.generate_studio_audio_with_subtitles(
+                    script,
+                    target_lang,
+                    job_id,
+                    progress_callback=update_studio_tts_progress,
+                )
             )
             audio_path = loop.run_until_complete(self._maybe_mix_bgm(job_id, audio_path))
             loop.close()
@@ -212,20 +246,30 @@ class BackgroundWorker:
                 job_manager.update_job(
                     job_id,
                     JobStatus.PROCESSING,
-                    message=f"Step 3/3: Rendering final video... {int(ratio * 100)}%",
                     progress=round(progress, 1),
                 )
 
-            def update_pixverse_status(provider: str, fallback_used: bool):
+            def update_pixverse_status(provider: str, fallback_used: bool, stage: str | None = None, stage_progress: float | None = None):
                 provider_label = (
                     "PixVerse (external clips)"
                     if provider == "pixverse_external"
-                    else ("PixVerse" if provider == "pixverse" else "Local fallback")
+                    else (
+                        "PixVerse (CLI)"
+                        if provider == "pixverse_cli"
+                        else ("PixVerse" if provider == "pixverse" else "Local fallback")
+                    )
                 )
+                stage_text = ""
+                if stage:
+                    stage_text = str(stage).replace("_", " ").strip()
+                msg = f"Step 3/3: {provider_label} storyboard ready for final mux..."
+                if stage_text:
+                    msg = f"Step 3/3: {provider_label} — {stage_text}"
                 job_manager.update_job(
                     job_id,
                     JobStatus.PROCESSING,
-                    message=f"Step 3/3: {provider_label} storyboard ready for final mux...",
+                    message=msg,
+                    progress=(76 + int(max(min(float(stage_progress or 0.0), 1.0), 0.0) * 20)) if stage_progress is not None else None,
                     pixverse_enabled=bool(settings.ENABLE_PIXVERSE_PRODUCER),
                     pixverse_provider=provider,
                     pixverse_fallback_used=bool(fallback_used),
@@ -244,12 +288,16 @@ class BackgroundWorker:
 
                 pixverse_clips_present = bool(payload.get("pixverse_clip_paths"))
                 pixverse_api_present = bool(settings.PIXVERSE_API_KEY)
+                pixverse_cli_possible = bool(getattr(settings, "ENABLE_PIXVERSE_CLI_PRODUCER", False))
+                pixverse_possible = bool(settings.ENABLE_PIXVERSE_PRODUCER) and (
+                    pixverse_clips_present or pixverse_api_present or pixverse_cli_possible
+                )
                 job_manager.update_job(
                     job_id,
                     JobStatus.PROCESSING,
                     message=(
                         "Step 3/3: Rendering PixVerse storyboard..."
-                        if settings.ENABLE_PIXVERSE_PRODUCER and (pixverse_clips_present or pixverse_api_present)
+                        if pixverse_possible
                         else "Step 3/3: Rendering HTML scene slides..."
                     ),
                     progress=76,
@@ -257,7 +305,11 @@ class BackgroundWorker:
                     pixverse_provider=(
                         "pixverse_external"
                         if (settings.ENABLE_PIXVERSE_PRODUCER and pixverse_clips_present)
-                        else ("pixverse" if (settings.ENABLE_PIXVERSE_PRODUCER and pixverse_api_present) else "html_scenes")
+                        else (
+                            "pending"
+                            if pixverse_possible
+                            else ("pixverse" if (settings.ENABLE_PIXVERSE_PRODUCER and pixverse_api_present) else "html_scenes")
+                        )
                     ),
                     pixverse_fallback_used=False,
                 )

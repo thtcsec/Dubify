@@ -74,7 +74,7 @@ const HACKATHON_DEMO_SCENES: SceneReviewCard[] = [
     title: 'Scene 2',
     text: 'Its dual 200MP camera setup pushes the product into a different tier, combining high-detail capture with professional-style zoom and a more serious imaging identity.',
     prompt:
-      'Subject: close-up of vivo X300 Ultra camera island with dual 200MP storytelling emphasis. Action: macro camera module reveal with precision highlights and glass reflections. Camera movement: slow macro slide and tilt. Lighting and style: PixVerse V6, cinematic macro commercial, sharp metal texture, glossy premium look. Context: emphasize creator-grade camera identity.',
+      'Subject: close-up of vivo X300 Ultra circular camera ring module with dual 200MP storytelling emphasis. Action: macro camera module reveal with precision highlights and glass reflections, round camera ring clearly visible. Camera movement: slow macro slide and tilt. Lighting and style: PixVerse V6, cinematic macro commercial, sharp metal texture, glossy premium look. Context: emphasize creator-grade camera identity.',
     durationSeconds: 6,
     approved: true,
     forceFallback: false,
@@ -142,8 +142,11 @@ function buildPixVersePrompt(title: string, text: string, topic: string): string
   const subject = words.slice(0, 6).join(' ') || topic || 'main subject';
   const action = words.slice(6, 20).join(' ') || normalized || 'dynamic cinematic motion';
   const style = `PixVerse V6, cinematic 4k, highly detailed, professional lighting, social media viral style, themed around ${topic || 'innovation'}`;
+  const productHint = (topic || '').toLowerCase().includes('x300 ultra')
+    ? ' Include vivo X300 Ultra with a circular camera ring module.'
+    : '';
   
-  return `Subject: ${subject}. Action: ${action}. Camera movement: slow push in and orbit. Lighting and style: ${style}. Context: ${normalized || topic || 'visual storytelling beat'}.`;
+  return `Subject: ${subject}. Action: ${action}. Camera movement: slow push in and orbit. Lighting and style: ${style}.${productHint} Context: ${normalized || topic || 'visual storytelling beat'}.`;
 }
 
 function splitSceneText(text: string): [string, string] {

@@ -313,6 +313,7 @@ export const en = {
     cancelledLabel: 'Cancelled',
     pixverseEnabled: 'PixVerse enabled',
     pixverseProvider: 'PixVerse producer',
+    pixverseCliProvider: 'PixVerse CLI (auto)',
     pixverseExternalProvider: 'PixVerse clips (uploaded)',
     localFallbackProvider: 'Local fallback producer',
     pixversePending: 'Producer pending',

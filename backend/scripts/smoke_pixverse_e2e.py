@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import asyncio
+import argparse
 import json
 import shutil
 import subprocess
@@ -47,6 +48,11 @@ def _stream_counts(probe: dict) -> tuple[int, int]:
 
 
 async def main() -> int:
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--cli", action="store_true", help="Force PixVerse CLI generation (no external clips).")
+    parser.add_argument("--external", action="store_true", help="Force external PixVerse clips from storage/input/pixverse_smoke.")
+    args = parser.parse_args()
+
     _require_bin("ffmpeg")
     _require_bin("ffprobe")
 
@@ -61,25 +67,72 @@ async def main() -> int:
     )
     external_dir = settings.INPUT_DIR / "pixverse_smoke"
     external_clips = sorted(external_dir.glob("*.mp4")) if external_dir.exists() else []
-    if not settings.PIXVERSE_API_KEY:
-        if len(external_clips) >= 4:
-            print("PixVerse API key not set; using external PixVerse clips from folder.")
-            use_external = True
-        else:
-            print("FAIL: PIXVERSE_API_KEY is missing in .env")
-            print(f"Hint: Put 4-8 PixVerse MP4 clips into: {external_dir}")
+    use_cli = False
+    use_external = False
+
+    if args.cli and args.external:
+        print("FAIL: choose only one of --cli or --external")
+        return 2
+
+    if args.external:
+        if len(external_clips) < 4:
+            print(f"FAIL: need 4-8 PixVerse MP4 clips in: {external_dir}")
             return 2
+        use_external = True
+    elif args.cli:
+        if not getattr(settings, "ENABLE_PIXVERSE_CLI_PRODUCER", False):
+            print("FAIL: ENABLE_PIXVERSE_CLI_PRODUCER=false")
+            return 2
+        use_cli = True
     else:
-        balance = adapter.get_credit_balance()
-        credits_total = int(balance.get("credit_monthly") or 0) + int(balance.get("credit_package") or 0)
-        print(
-            f"PixVerse balance: monthly={balance.get('credit_monthly')} package={balance.get('credit_package')} account_id={balance.get('account_id')}"
-        )
-        use_external = credits_total <= 0 and len(external_clips) >= 4
-        if credits_total <= 0 and not use_external:
-            print("FAIL: PixVerse Platform API credits are 0. Cannot run real PixVerse generation.")
-            print("Note: Platform API credits are separate from PixVerse Web (app.pixverse.ai) membership.")
-            print(f"Hint: Put 4-8 PixVerse MP4 clips into: {external_dir}")
+        if settings.PIXVERSE_API_KEY:
+            balance = adapter.get_credit_balance()
+            credits_total = int(balance.get("credit_monthly") or 0) + int(balance.get("credit_package") or 0)
+            print(
+                f"PixVerse balance: monthly={balance.get('credit_monthly')} package={balance.get('credit_package')} account_id={balance.get('account_id')}"
+            )
+            if credits_total > 0:
+                use_external = False
+                use_cli = False
+            elif len(external_clips) >= 4:
+                print("PixVerse Platform API credits are 0; using external PixVerse clips from folder.")
+                use_external = True
+            elif getattr(settings, "ENABLE_PIXVERSE_CLI_PRODUCER", False):
+                use_cli = True
+            else:
+                print("FAIL: PixVerse Platform API credits are 0.")
+                print("Hint: enable PixVerse CLI producer or put 4-8 PixVerse MP4 clips into:", external_dir)
+                return 2
+        else:
+            if len(external_clips) >= 4:
+                print("PixVerse Platform API key not set; using external PixVerse clips from folder.")
+                use_external = True
+            elif getattr(settings, "ENABLE_PIXVERSE_CLI_PRODUCER", False):
+                use_cli = True
+            else:
+                print("FAIL: PixVerse is not configured (no API key, no external clips, no CLI producer).")
+                print("Hint: Put 4-8 PixVerse MP4 clips into:", external_dir)
+                return 2
+
+    if use_cli:
+        if shutil.which("pixverse") is None and shutil.which("npx") is None:
+            print("FAIL: PixVerse CLI not found (need pixverse or npx).")
+            return 2
+        try:
+            proc = subprocess.run(
+                ["pixverse", "auth", "status", "--json"] if shutil.which("pixverse") else ["npx", "-y", "pixverse@1.1.10", "auth", "status", "--json"],
+                cwd=str(settings.TEMP_DIR),
+                capture_output=True,
+                text=True,
+                check=False,
+            )
+            payload = json.loads((proc.stdout or "{}").strip() or "{}")
+            if not payload.get("authenticated"):
+                print("FAIL: PixVerse CLI is not logged in.")
+                print("Hint: run `pixverse auth login` once before smoke.")
+                return 2
+        except Exception as exc:
+            print("FAIL: Could not verify PixVerse CLI auth:", str(exc))
             return 2
 
     job_id = "smoke_pixverse_e2e"
@@ -90,7 +143,7 @@ async def main() -> int:
         "[Scene 1]\n"
         "vivo X300 Ultra opens as a creator-first flagship. Premium lighting, cinematic staging, and a confident launch tone.\n\n"
         "[Scene 2]\n"
-        "Close-up: the camera island and lens glass reflect like a professional cinema rig. The story is all about imaging identity.\n\n"
+        "Close-up: the circular camera ring module and lens glass reflect like a professional cinema rig. The story is all about imaging identity.\n\n"
         "[Scene 3]\n"
         "A creator films at night in the city. The workflow is fast: capture, edit, publish — built for short-form platforms.\n\n"
         "[Scene 4]\n"
@@ -111,10 +164,10 @@ async def main() -> int:
         {
             "scene_id": "scene_02",
             "title": "Camera close-up",
-            "description": "Macro camera island reveal with premium reflections and launch lighting.",
+            "description": "Macro circular camera ring reveal with premium reflections and launch lighting.",
             "duration_seconds": 6,
             "approved": True,
-            "prompt": "Subject: close-up of vivo X300 Ultra camera island with dual 200MP storytelling emphasis. Action: macro camera module reveal with precision highlights and glass reflections. Camera movement: slow macro slide and tilt. Lighting and style: PixVerse V6, cinematic macro commercial, sharp metal texture, glossy premium look. Context: emphasize creator-grade camera identity.",
+            "prompt": "Subject: close-up of vivo X300 Ultra circular camera ring module with dual 200MP storytelling emphasis. Action: macro camera module reveal with precision highlights and glass reflections, round camera ring clearly visible. Camera movement: slow macro slide and tilt. Lighting and style: PixVerse V6, cinematic macro commercial, sharp metal texture, glossy premium look. Context: emphasize creator-grade camera identity.",
         },
         {
             "scene_id": "scene_03",
@@ -184,6 +237,7 @@ async def main() -> int:
     shots = prov.get("shots") or []
     api_shots = [s for s in shots if str(s.get("source")) == "pixverse_api"]
     external_shots = [s for s in shots if str(s.get("source")) == "pixverse_external"]
+    cli_shots = [s for s in shots if str(s.get("source")) == "pixverse_cli"]
     if provider == "pixverse":
         if len(api_shots) < 1:
             print(f"FAIL: not a real PixVerse API run (provider={provider}, api_shots={len(api_shots)})")
@@ -191,6 +245,10 @@ async def main() -> int:
     elif provider == "pixverse_external":
         if len(external_shots) < 4:
             print(f"FAIL: not enough external PixVerse clips (provider={provider}, external_shots={len(external_shots)})")
+            return 1
+    elif provider == "pixverse_cli":
+        if len(cli_shots) < 4:
+            print(f"FAIL: not enough PixVerse CLI clips (provider={provider}, cli_shots={len(cli_shots)})")
             return 1
     else:
         print(f"FAIL: PixVerse producer not used (provider={provider})")

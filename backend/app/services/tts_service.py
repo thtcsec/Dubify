@@ -391,7 +391,11 @@ class TTSService:
         return False
 
     async def generate_studio_audio_with_subtitles(
-        self, text: str, target_lang: str, job_id: str
+        self,
+        text: str,
+        target_lang: str,
+        job_id: str,
+        progress_callback: Optional[Callable[[str, int, int], None]] = None,
     ) -> Tuple[Path, Path]:
         """Full-length studio TTS: chunk long scripts instead of truncating to 280 chars."""
         from app.utils.script_split import split_spoken_lines
@@ -441,6 +445,8 @@ class TTSService:
             paths: list[Path] = []
             lines = ["WEBVTT", ""]
             t = 0.0
+            if progress_callback:
+                progress_callback("synthesize", 0, len(chunks))
 
             eleven_provider = None
             if name == "elevenlabs":
@@ -496,6 +502,8 @@ class TTSService:
                 lines.append(chunk)
                 lines.append("")
                 t += dur
+                if progress_callback:
+                    progress_callback("synthesize", len(paths), len(chunks))
 
             return paths, lines
 
@@ -508,6 +516,8 @@ class TTSService:
             raise RuntimeError("Studio TTS produced no audio chunks.")
 
         final_audio = settings.TEMP_DIR / f"{job_id}_tts.mp3"
+        if progress_callback:
+            progress_callback("concat", 0, 1)
         if len(chunk_paths) == 1:
             src = chunk_paths[0]
             if src.suffix.lower() == ".wav":
@@ -544,6 +554,8 @@ class TTSService:
                 stdout=subprocess.DEVNULL,
                 stderr=subprocess.PIPE,
             )
+        if progress_callback:
+            progress_callback("concat", 1, 1)
 
         final_vtt = settings.TEMP_DIR / f"{job_id}_tts.vtt"
         final_vtt.write_text("\n".join(vtt_lines), encoding="utf-8")
