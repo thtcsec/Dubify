@@ -162,6 +162,21 @@ class JobManager:
 
     # ─── Job Updates ────────────────────────────────────────────────────
 
+    def rename_job(self, job_id: str, filename: str) -> bool:
+        """Update display name shown in history/projects."""
+        name = (filename or "").strip()[:200]
+        if not name:
+            return False
+        with self._lock:
+            job = self.jobs.get(job_id)
+            if not job:
+                return False
+            job["filename"] = name
+            job["updated_at"] = datetime.now().isoformat()
+            self._save()
+            self._emit_event("updated", job_id)
+        return True
+
     def update_job(
         self,
         job_id: str,
@@ -171,6 +186,7 @@ class JobManager:
         message: Optional[str] = None,
         progress: Optional[int] = None,
         parts: Optional[List[Dict[str, Any]]] = None,
+        filename: Optional[str] = None,
     ):
         with self._lock:
             if job_id not in self.jobs:
@@ -196,6 +212,8 @@ class JobManager:
                 job["progress"] = progress
             if parts is not None:
                 job["parts"] = parts
+            if filename is not None:
+                job["filename"] = str(filename).strip()[:200] or job.get("filename")
             self._save()
             self._emit_event("updated", job_id)
 

@@ -79,6 +79,15 @@ class Settings(BaseSettings):
     STUDIO_GRAIN_ENABLED: bool = True
     STUDIO_VIGNETTE_ENABLED: bool = True
     STUDIO_GRAIN_SEED: int = 42  # Fixed seed for deterministic output
+    STUDIO_DEFAULT_TEMPLATE: str = "tiktok_news_pill"
+    STUDIO_USE_SCENE_IMAGES: bool = True
+    STUDIO_ANIMATED_RENDER: bool = True
+    STUDIO_ANIMATED_FPS: int = 24
+    STUDIO_ANIMATED_MAX_SECONDS: float = 12.0
+    STUDIO_RENDER_SCALE: float = 1.0
+    STUDIO_SEGMENT_CRF: int = 21
+    STUDIO_XFADE_CRF: int = 20
+    STUDIO_OUTPUT_CRF: int = 20
     # Resource limits
     MAX_CONCURRENT_PLAYWRIGHT: int = 2
     MAX_CONCURRENT_FFMPEG: int = 3

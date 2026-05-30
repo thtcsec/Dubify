@@ -106,13 +106,13 @@ def build_html_scene_video(
         # Take first meaningful sentence as topic
         sentences = [s.strip() for s in clean_script.split(".") if len(s.strip()) > 10]
         topic_label = sentences[0][:100] if sentences else clean_script[:100]
-    fetch_images = bool(topic_label)  # Always fetch if we have any topic
+    fetch_images = bool(topic_label) and bool(use_scene_images)
     if fetch_images:
         from app.services.scene_image_service import resolve_scene_image
 
     scene_pngs: list[tuple[Path, float]] = []
     # Try animated multi-frame render for smoother motion (Remotion-style)
-    use_animated = settings.STUDIO_RENDER_ENGINE != "pil"  # Animated needs Playwright
+    use_animated = bool(settings.STUDIO_ANIMATED_RENDER) and settings.STUDIO_RENDER_ENGINE != "pil"
     
     for index, scene in enumerate(timed_scenes):
         png_path = temp_dir / f"scene_{index:03d}.png"
@@ -146,7 +146,14 @@ def build_html_scene_video(
         if use_animated and duration >= 2.0:
             try:
                 from app.services.render_abstraction import SceneRenderer, RenderMode
-                animated_renderer = SceneRenderer(mode=RenderMode.ANIMATED, fps=12)
+                animated_renderer = SceneRenderer(
+                    mode=RenderMode.ANIMATED,
+                    fps=int(getattr(settings, "STUDIO_ANIMATED_FPS", 24)),
+                    width=renderer.width,
+                    height=renderer.height,
+                    scale=float(getattr(settings, "STUDIO_RENDER_SCALE", 1.0)),
+                    max_scene_duration=float(getattr(settings, "STUDIO_ANIMATED_MAX_SECONDS", 12.0)),
+                )
                 html_path = png_path.with_suffix(".html")
                 if html_path.exists():
                     frame_dir = temp_dir / f"scene_{index:03d}_frames"

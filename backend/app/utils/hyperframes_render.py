@@ -132,7 +132,8 @@ def render_scene_png_via_hyperframes(
         wrapped = wrap_scene_as_composition(raw, width=width, height=height, duration=duration)
         work = output_png.parent / "hf_work"
         work.mkdir(parents=True, exist_ok=True)
-        comp_path = work / "composition.html"
+        # HyperFrames expects a composition folder with index.html
+        comp_path = work / "index.html"
         comp_path.write_text(wrapped, encoding="utf-8")
         mp4_path = work / "scene.mp4"
 
@@ -142,7 +143,7 @@ def render_scene_png_via_hyperframes(
             "hyperframes@latest",
             "render",
             "-c",
-            str(comp_path),
+            str(work),
             "-o",
             str(mp4_path),
             "--fps",
@@ -160,7 +161,7 @@ def render_scene_png_via_hyperframes(
         )
         if proc.returncode != 0:
             err = (proc.stderr or proc.stdout or "")[:800]
-            logger.warning("HyperFrames render failed (%s): %s", proc.returncode, err)
+            logger.debug("HyperFrames render failed (%s), using Playwright: %s", proc.returncode, err.strip()[:200])
             return False
         if not mp4_path.exists() or mp4_path.stat().st_size < 1000:
             logger.warning("HyperFrames output missing or too small")

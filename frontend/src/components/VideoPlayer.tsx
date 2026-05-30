@@ -20,16 +20,25 @@ export function VideoPlayer({ src, className = '', maxHeightClass = 'max-h-[min(
   const videoRef = useRef<HTMLVideoElement>(null);
   const seekBarRef = useRef<HTMLDivElement>(null);
   const seekingRef = useRef(false);
+  const seekPendingRef = useRef(0);
   const [playing, setPlaying] = useState(false);
   const [current, setCurrent] = useState(0);
   const [duration, setDuration] = useState(0);
   const [muted, setMuted] = useState(false);
   const [seeking, setSeeking] = useState(false);
 
+  const videoDuration = useCallback(() => {
+    const v = videoRef.current;
+    if (v && Number.isFinite(v.duration) && v.duration > 0) return v.duration;
+    return duration;
+  }, [duration]);
+
   const syncFromVideo = useCallback(() => {
     const v = videoRef.current;
     if (!v) return;
-    setCurrent(v.currentTime);
+    if (!seekingRef.current) {
+      setCurrent(v.currentTime);
+    }
     if (Number.isFinite(v.duration) && v.duration > 0) {
       setDuration(v.duration);
     }
@@ -44,6 +53,7 @@ export function VideoPlayer({ src, className = '', maxHeightClass = 'max-h-[min(
     const v = videoRef.current;
     if (!v) return;
     v.load();
+    seekPendingRef.current = 0;
     setCurrent(0);
     setDuration(0);
     setPlaying(false);
@@ -59,6 +69,19 @@ export function VideoPlayer({ src, className = '', maxHeightClass = 'max-h-[min(
     return () => cancelAnimationFrame(raf);
   }, [syncFromVideo]);
 
+  const applyPendingSeek = useCallback(() => {
+    const v = videoRef.current;
+    const d = videoDuration();
+    if (!v || d <= 0) return;
+    const t = Math.max(0, Math.min(seekPendingRef.current, d));
+    try {
+      v.currentTime = t;
+      setCurrent(t);
+    } catch {
+      /* metadata not ready */
+    }
+  }, [videoDuration]);
+
   const togglePlay = () => {
     const v = videoRef.current;
     if (!v) return;
@@ -69,20 +92,20 @@ export function VideoPlayer({ src, className = '', maxHeightClass = 'max-h-[min(
 
   const seekTo = useCallback(
     (time: number) => {
-      const v = videoRef.current;
-      const d = duration > 0 ? duration : v && Number.isFinite(v.duration) ? v.duration : 0;
-      if (d <= 0) return;
-      const t = Math.max(0, Math.min(time, d));
+      seekPendingRef.current = time;
+      const d = videoDuration();
+      const t = d > 0 ? Math.max(0, Math.min(time, d)) : Math.max(0, time);
       setCurrent(t);
-      if (v) {
+      const v = videoRef.current;
+      if (v && d > 0) {
         try {
           v.currentTime = t;
         } catch {
-          /* ignore seek while metadata loading */
+          /* wait for loadedmetadata */
         }
       }
     },
-    [duration],
+    [videoDuration],
   );
 
   const seekFromClientX = useCallback(
@@ -91,34 +114,45 @@ export function VideoPlayer({ src, className = '', maxHeightClass = 'max-h-[min(
       if (!bar) return;
       const rect = bar.getBoundingClientRect();
       const ratio = Math.max(0, Math.min(1, (clientX - rect.left) / rect.width));
-      const d = duration > 0 ? duration : 1;
+      const d = videoDuration();
+      if (d <= 0) {
+        seekPendingRef.current = ratio * 100;
+        setCurrent(ratio * 100);
+        return;
+      }
       seekTo(ratio * d);
     },
-    [duration, seekTo],
+    [seekTo, videoDuration],
   );
 
   const endSeek = useCallback(() => {
-    const v = videoRef.current;
-    if (v && duration > 0) {
-      try {
-        v.currentTime = current;
-      } catch {
-        /* ignore */
-      }
-    }
     seekingRef.current = false;
     setSeeking(false);
+    applyPendingSeek();
     syncFromVideo();
-  }, [current, duration, syncFromVideo]);
+  }, [applyPendingSeek, syncFromVideo]);
 
   const startSeek = (e: React.PointerEvent<HTMLDivElement>) => {
     e.preventDefault();
     e.stopPropagation();
     seekingRef.current = true;
     setSeeking(true);
-    e.currentTarget.setPointerCapture(e.pointerId);
+    const v = videoRef.current;
+    if (v && !v.paused) v.pause();
     seekFromClientX(e.clientX);
   };
+
+  useEffect(() => {
+    if (!seeking) return;
+    const onMove = (e: PointerEvent) => seekFromClientX(e.clientX);
+    const onUp = () => endSeek();
+    window.addEventListener('pointermove', onMove);
+    window.addEventListener('pointerup', onUp);
+    return () => {
+      window.removeEventListener('pointermove', onMove);
+      window.removeEventListener('pointerup', onUp);
+    };
+  }, [seeking, seekFromClientX, endSeek]);
 
   const toggleFullscreen = async () => {
     const shell = shellRef.current;
@@ -127,7 +161,8 @@ export function VideoPlayer({ src, className = '', maxHeightClass = 'max-h-[min(
     else await shell.requestFullscreen();
   };
 
-  const progressPct = duration > 0 ? (current / duration) * 100 : 0;
+  const d = videoDuration();
+  const progressPct = d > 0 ? (current / d) * 100 : 0;
 
   return (
     <div
@@ -143,7 +178,10 @@ export function VideoPlayer({ src, className = '', maxHeightClass = 'max-h-[min(
         muted={muted}
         className={`block w-full ${maxHeightClass} bg-black cursor-pointer`}
         onClick={togglePlay}
-        onLoadedMetadata={syncFromVideo}
+        onLoadedMetadata={() => {
+          syncFromVideo();
+          applyPendingSeek();
+        }}
         onDurationChange={syncFromVideo}
         onPlay={() => setPlaying(true)}
         onPause={() => setPlaying(false)}
@@ -160,24 +198,17 @@ export function VideoPlayer({ src, className = '', maxHeightClass = 'max-h-[min(
           {playing ? <Pause className="h-4 w-4" /> : <Play className="h-4 w-4 ml-0.5" />}
         </Button>
         <span className="text-[11px] font-mono text-slate-400 w-[72px] shrink-0 tabular-nums">
-          {formatTime(current)} / {formatTime(duration)}
+          {formatTime(current)} / {formatTime(d)}
         </span>
         <div
           ref={seekBarRef}
           role="slider"
           aria-label="Seek"
           aria-valuemin={0}
-          aria-valuemax={duration > 0 ? duration : 1}
+          aria-valuemax={d > 0 ? d : 1}
           aria-valuenow={current}
           className="relative flex-1 h-5 flex items-center cursor-pointer touch-none min-w-0 group"
           onPointerDown={startSeek}
-          onPointerMove={(e) => {
-            if (!seekingRef.current) return;
-            seekFromClientX(e.clientX);
-          }}
-          onPointerUp={endSeek}
-          onPointerCancel={endSeek}
-          onLostPointerCapture={endSeek}
         >
           <div className="absolute inset-x-0 h-1.5 rounded-full bg-white/15" />
           <div

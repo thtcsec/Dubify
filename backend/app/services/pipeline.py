@@ -11,6 +11,7 @@ from app.services.translate_service import TranslateService
 from app.services.tts_service import TTSService
 from app.services.video_service import VideoService
 from app.utils.artifacts import persist_dubbing_artifacts
+from app.utils.safe_filename import dubbed_output_filename
 from app.utils.subtitles import chunks_to_srt
 
 logger = logging.getLogger(__name__)
@@ -45,7 +46,7 @@ class DubbingPipeline:
         transcript_path = session_dir / "transcript.json"
         concat_list_path = session_dir / "concat_list.txt"
         final_audio = session_dir / "dubbed_audio_final.wav"
-        output_video = settings.OUTPUT_DIR / f"{session_id}_dubbed_{video_path.name}"
+        output_video = settings.OUTPUT_DIR / dubbed_output_filename(session_id, video_path.name)
 
         try:
             report.check_cancel()

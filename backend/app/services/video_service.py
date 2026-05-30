@@ -702,7 +702,7 @@ class VideoService:
                 "-loop", "1", "-i", str(image_path),
                 "-i", str(audio_path),
                 "-vf", motion_filter,
-                *video_encoder_args(crf=23),
+                *video_encoder_args(crf=settings.STUDIO_OUTPUT_CRF),
                 "-c:a", "aac", "-b:a", "192k",
                 "-shortest", "-pix_fmt", "yuv420p",
                 str(output_path)
@@ -721,7 +721,7 @@ class VideoService:
         frame_paths: list,
         output_path: Path,
         duration: float,
-        fps: int = 12,
+        fps: int | None = None,
         width: int = 1080,
         height: int = 1920,
     ) -> bool:
@@ -733,6 +733,8 @@ class VideoService:
             return False
 
         output_path.parent.mkdir(parents=True, exist_ok=True)
+        effective_fps = fps or int(getattr(settings, "STUDIO_ANIMATED_FPS", 24))
+        effective_fps = max(12, min(30, effective_fps))
 
         # Create frame list file for FFmpeg
         list_file = output_path.with_suffix(".frames.txt")
@@ -750,8 +752,8 @@ class VideoService:
                 "-f", "concat", "-safe", "0",
                 "-i", str(list_file),
                 "-vf", f"scale={width}:{height}:force_original_aspect_ratio=decrease,pad={width}:{height}:(ow-iw)/2:(oh-ih)/2,format=yuv420p",
-                "-r", str(fps),
-                *video_encoder_args(crf=20),
+                "-r", str(effective_fps),
+                *video_encoder_args(crf=settings.STUDIO_SEGMENT_CRF),
                 "-an",
                 str(output_path),
             ]
@@ -832,7 +834,12 @@ class VideoService:
                     if len(frame_files) >= 3:
                         # Use frame sequence (animated render — smooth motion)
                         if VideoService.frames_to_video_segment(
-                            frame_files, seg_out, dur, fps=12, width=width, height=height
+                            frame_files,
+                            seg_out,
+                            dur,
+                            fps=int(getattr(settings, "STUDIO_ANIMATED_FPS", 24)),
+                            width=width,
+                            height=height,
                         ):
                             segment_paths.append(seg_out)
                             continue
@@ -850,7 +857,7 @@ class VideoService:
                     f"{dur:.3f}",
                     "-vf",
                     motion_filter,
-                    *video_encoder_args(crf=22),
+                    *video_encoder_args(crf=settings.STUDIO_SEGMENT_CRF),
                     "-an",
                     str(seg_out),
                 ]
@@ -906,6 +913,10 @@ class VideoService:
                     )
                 vf_parts.append(f"ass='{VideoService._ffmpeg_subtitle_path(ass_path)}'")
 
+            grain_vignette = VideoService._grain_vignette_filter().lstrip(",")
+            if grain_vignette:
+                vf_parts.append(grain_vignette)
+
             command = [
                 "ffmpeg",
                 "-y",
@@ -915,7 +926,7 @@ class VideoService:
                 str(audio_path),
             ]
             if vf_parts:
-                command.extend(["-vf", ",".join(vf_parts), *video_encoder_args(crf=20)])
+                command.extend(["-vf", ",".join(vf_parts), *video_encoder_args(crf=settings.STUDIO_OUTPUT_CRF)])
             else:
                 command.extend(["-c:v", "copy"])
             command.extend(
@@ -994,7 +1005,7 @@ class VideoService:
                         "-i", str(nxt),
                         "-filter_complex", filter_complex,
                         "-map", "[v]",
-                        *video_encoder_args(crf=22),
+                        *video_encoder_args(crf=settings.STUDIO_XFADE_CRF),
                         str(merged),
                     ],
                     check=True, stdout=subprocess.DEVNULL, stderr=subprocess.PIPE,
@@ -1009,7 +1020,7 @@ class VideoService:
                         "-i", str(nxt),
                         "-filter_complex", filter_complex,
                         "-map", "[v]",
-                        "-c:v", "libx264", "-preset", "fast", "-crf", "22",
+                        "-c:v", "libx264", "-preset", "fast", "-crf", str(settings.STUDIO_XFADE_CRF),
                         str(merged),
                     ],
                     check=True, stdout=subprocess.DEVNULL, stderr=subprocess.PIPE,

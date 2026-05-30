@@ -114,7 +114,7 @@ async def create_studio_video(
     aspect_ratio: str = Form("16:9"),
     use_raw_script: bool = Form(False),
     studio_visual_mode: str = Form("html_scenes"),
-    studio_template: str = Form("tiktok_news"),
+    studio_template: str = Form(settings.STUDIO_DEFAULT_TEMPLATE),
     studio_render_engine: str = Form("auto"),
     social_overlay: str = Form("none"),
     social_handle: str = Form(""),
@@ -135,7 +135,7 @@ async def create_studio_video(
     caption_y_pct: float = Form(64.0),
     research_topic: str = Form(""),
     wiki_thumbnail_url: str = Form(""),
-    use_scene_images: bool = Form(False),
+    use_scene_images: bool = Form(settings.STUDIO_USE_SCENE_IMAGES),
     project_name: str = Form(""),
 ):
     """Create a studio video from script; background image is optional (gradient if omitted)."""
@@ -189,7 +189,7 @@ async def create_studio_video(
 
     allowed_templates = {"tiktok_news", "tiktok_news_pill", "news_scene", "pixelle_story"}
     if studio_template not in allowed_templates:
-        studio_template = "tiktok_news"
+        studio_template = settings.STUDIO_DEFAULT_TEMPLATE
 
     worker.add_job(job_id, {
         "type": JobType.STUDIO,

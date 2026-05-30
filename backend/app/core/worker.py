@@ -137,7 +137,7 @@ class BackgroundWorker:
         aspect_ratio = payload.get("aspect_ratio", "16:9")
         use_raw_script = bool(payload.get("use_raw_script", True))
         studio_visual_mode = (payload.get("studio_visual_mode") or "html_scenes").strip().lower()
-        studio_template = (payload.get("studio_template") or "tiktok_news").strip()
+        studio_template = (payload.get("studio_template") or settings.STUDIO_DEFAULT_TEMPLATE).strip()
         studio_render_engine = (payload.get("studio_render_engine") or "auto").strip().lower()
         social_overlay_payload = {
             "social_overlay": payload.get("social_overlay", "none"),
@@ -197,7 +197,15 @@ class BackgroundWorker:
             # Step 3/3: Video Assembly (70% -> 100%)
             self._check_pause_and_cancel(job_id)
             job_manager.update_job(job_id, JobStatus.PROCESSING, message="Step 3/3: Assembling final video...", progress=75)
-            output_filename = f"{job_id}_studio.mp4"
+            from app.utils.project_title import derive_studio_title
+            from app.utils.safe_filename import studio_output_filename
+
+            title = derive_studio_title(
+                project_name=str(payload.get("project_name") or ""),
+                research_topic=str(payload.get("research_topic") or ""),
+                script=script,
+            )
+            output_filename = studio_output_filename(job_id, title)
             output_path = settings.OUTPUT_DIR / output_filename
             def update_render_progress(ratio: float):
                 progress = 75 + (ratio * 23)
@@ -207,6 +215,13 @@ class BackgroundWorker:
                     message=f"Step 3/3: Rendering final video... {int(ratio * 100)}%",
                     progress=round(progress, 1),
                 )
+
+            allowed_templates = {"tiktok_news", "tiktok_news_pill", "news_scene", "pixelle_story"}
+            if studio_template not in allowed_templates:
+                studio_template = settings.STUDIO_DEFAULT_TEMPLATE
+            use_scene_images = payload.get("use_scene_images")
+            if use_scene_images is None:
+                use_scene_images = settings.STUDIO_USE_SCENE_IMAGES
 
             success = False
             if studio_visual_mode == "html_scenes":
@@ -230,6 +245,9 @@ class BackgroundWorker:
                     studio_layout=studio_layout_payload,
                     render_engine=studio_render_engine,
                     progress_callback=update_render_progress,
+                    research_topic=payload.get("research_topic") or None,
+                    wiki_thumbnail_url=str(payload.get("wiki_thumbnail_url") or ""),
+                    use_scene_images=bool(use_scene_images),
                 )
                 if not success:
                     logger.warning("HTML scene render failed for %s; using classic Ken Burns.", job_id)
@@ -438,10 +456,8 @@ class BackgroundWorker:
             target_lang=target_lang,
             service_type=settings.default_translation_service(),
         )
-        pipeline.tts_service = TTSService(
-            voice=TTSService.default_voice_for_lang(target_lang),
-            target_lang=target_lang,
-        )
+        dub_voice = payload.get("voice_id") or TTSService.default_voice_for_lang(target_lang)
+        pipeline.tts_service = TTSService(voice=dub_voice, target_lang=target_lang)
 
         import asyncio
         import os

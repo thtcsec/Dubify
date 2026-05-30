@@ -49,11 +49,17 @@ class SceneRenderer:
         fps: int = 30,
         max_scene_duration: float = 15.0,
         max_frames_per_scene: int = 450,
+        width: int | None = None,
+        height: int | None = None,
+        scale: float = 1.0,
     ):
         self.mode = mode
         self.fps = min(fps, 30)  # Cap at 30 FPS
         self.max_scene_duration = max_scene_duration
         self.max_frames_per_scene = max_frames_per_scene
+        self.width = width or 1080
+        self.height = height or 1920
+        self.scale = max(1.0, min(scale, 2.0))
         self._metrics = RenderMetrics()
 
     @property
@@ -145,8 +151,7 @@ class SceneRenderer:
         """
         start = time.time()
         capped_duration = min(duration, self.max_scene_duration)
-        # Use 12fps for efficiency (still smooth with Ken Burns + xfade)
-        effective_fps = min(self.fps, 12)
+        effective_fps = max(12, min(self.fps, 30))
         n_frames = min(
             int(capped_duration * effective_fps),
             self.max_frames_per_scene,
@@ -169,11 +174,22 @@ class SceneRenderer:
                     args=["--disable-dev-shm-usage", "--disable-gpu"],
                 )
                 page = browser.new_page(
-                    viewport={"width": 1080, "height": 1920},
-                    device_scale_factor=1,
+                    viewport={"width": self.width, "height": self.height},
+                    device_scale_factor=self.scale,
                 )
                 page.goto(html_path.resolve().as_uri(), wait_until="load", timeout=20000)
-                page.wait_for_timeout(300)
+                page.wait_for_timeout(200)
+                try:
+                    page.wait_for_function(
+                        "document.fonts ? document.fonts.status === 'loaded' : true",
+                        timeout=10000,
+                    )
+                except Exception:
+                    pass
+                try:
+                    page.wait_for_selector(".scene", timeout=10_000)
+                except Exception:
+                    pass
 
                 # Pause all animations initially
                 page.evaluate("document.getAnimations().forEach(a => a.pause())")
@@ -237,9 +253,19 @@ class SceneRenderer:
 
             with sync_playwright() as pw:
                 browser = pw.chromium.launch(headless=True)
-                page = browser.new_page(viewport={"width": 1080, "height": 1920})
+                page = browser.new_page(
+                    viewport={"width": self.width, "height": self.height},
+                    device_scale_factor=self.scale,
+                )
                 page.goto(html_path.resolve().as_uri(), wait_until="load", timeout=15000)
-                page.wait_for_timeout(1500)
+                try:
+                    page.wait_for_function(
+                        "document.fonts ? document.fonts.status === 'loaded' : true",
+                        timeout=10000,
+                    )
+                except Exception:
+                    pass
+                page.wait_for_timeout(800)
                 page.locator(".scene").first.screenshot(path=str(output_png), type="png")
                 browser.close()
             return output_png.exists()

@@ -8,6 +8,11 @@ import { useI18n } from '@/i18n/I18nProvider';
 interface DashboardViewProps {
   targetLang: string;
   setTargetLang: (lang: string) => void;
+  voiceId: string;
+  setVoiceId: (id: string) => void;
+  projectName: string;
+  setProjectName: (name: string) => void;
+  suggestedProjectName?: string;
   jobId: string | null;
   isLoading: boolean;
   file: File | null;
@@ -30,6 +35,11 @@ interface DashboardViewProps {
 export function DashboardView({
   targetLang,
   setTargetLang,
+  voiceId,
+  setVoiceId,
+  projectName,
+  setProjectName,
+  suggestedProjectName,
   jobId,
   isLoading,
   file,
@@ -93,6 +103,11 @@ export function DashboardView({
                   <ProjectSettings 
                     targetLang={targetLang}
                     setTargetLang={setTargetLang}
+                    voiceId={voiceId}
+                    setVoiceId={setVoiceId}
+                    projectName={projectName}
+                    setProjectName={setProjectName}
+                    suggestedProjectName={suggestedProjectName}
                     isLoading={isLoading}
                     canStart={!!file || !!videoInfo}
                     onStart={handleStartDubbing}

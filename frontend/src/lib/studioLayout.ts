@@ -36,8 +36,8 @@ export function clampLayout(layout: StudioLayoutPositions): StudioLayoutPosition
     headerYPct: Math.max(0, Math.min(layout.headerYPct, maxHeader)),
     footerYPct: Math.max(layout.headerYPct + BAND_HEIGHT_PCT + 2, Math.min(layout.footerYPct, 100 - BAND_HEIGHT_PCT)),
     socialLeftPct: Math.max(0, Math.min(layout.socialLeftPct, 72)),
-    socialBottomPct: Math.max(2, Math.min(layout.socialBottomPct, 40)),
-    captionYPct: Math.max(35, Math.min(layout.captionYPct, 82)),
+    socialBottomPct: Math.max(2, Math.min(layout.socialBottomPct, 92)),
+    captionYPct: Math.max(22, Math.min(layout.captionYPct, 88)),
   };
 }
 

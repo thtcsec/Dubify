@@ -223,7 +223,7 @@ class StudioHtmlService:
 
                     viewport={"width": self.width, "height": self.height},
 
-                    device_scale_factor=1,
+                    device_scale_factor=max(1.0, min(float(getattr(settings, "STUDIO_RENDER_SCALE", 1.0)), 2.0)),
 
                 )
 
@@ -232,6 +232,14 @@ class StudioHtmlService:
                 page.wait_for_selector(".scene", timeout=10_000)
 
                 try:
+
+                    page.wait_for_function(
+
+                        "document.fonts ? document.fonts.status === 'loaded' : true",
+
+                        timeout=10_000,
+
+                    )
 
                     page.wait_for_function(
 

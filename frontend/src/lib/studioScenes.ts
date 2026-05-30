@@ -1,4 +1,5 @@
-const SECTION_RE = /^\s*\[([^\]]+)\]\s*$/gm;
+/** Scene headers only — exclude [STAT:] / [DEF:] popup lines */
+const SECTION_RE = /^\s*\[(?!STAT:|DEF:)([^\]]+)\]\s*$/gim;
 
 export interface StudioScenePreview {
   title: string;
