@@ -1,0 +1,59 @@
+Dubify — Local-first PixVerse Marketing Video Studio (TRAE x PixVerse Hackathon Proposal)
+
+Team name: Dubify (TRAE Solo)
+Track: Video Generation (PixVerse)
+
+1) One-liner
+Dubify turns a brief into a 30s+ multi-shot PixVerse video with human scene review, then automatically adds voiceover + subtitles and exports a final MP4 with clear provenance.
+
+2) Problem
+- Generating “campaign-ready” short videos is not just prompt → video. Teams need a workflow: scene planning, review/approval, consistent voiceover, subtitles, and a reliable final export.
+- Typical toolchains require manual jumping between tabs (LLM → generator → download → rename → edit timeline), which is error-prone and hard to demo under time pressure.
+
+3) Solution
+Dubify provides an end-to-end production workflow:
+- Brief/Topic → scene-based script
+- Scene Review (edit prompts, approve, force fallback when needed)
+- PixVerse multi-shot generation (real PixVerse: API when credits exist, or PixVerse CLI when using Web membership credits)
+- Auto download + naming + clip assembly
+- Voiceover (TTS) + subtitles (burn-in)
+- Export final MP4 + provenance sidecar
+
+4) Key workflow (judge-facing)
+Step 1/3: Script preparation (scene-based)
+Step 2/3: Voiceover generation (chunked TTS with progress)
+Step 3/3: PixVerse storyboard + final assembly
+  - Auth check
+  - Submit N shots (4–8 shots)
+  - Wait for generation completion
+  - Download clips locally
+  - Rename clips consistently (clip_000.mp4, clip_001.mp4, ...)
+  - Merge clips (keeps total >= 30s)
+  - Mux audio + subtitles
+  - Export final MP4
+
+5) What’s “beyond playback”
+- Scene Review UI: per-scene prompt editing + approval gate before render/export
+- Provenance: sidecar JSON includes provider (pixverse_api / pixverse_cli / pixverse_external), shot ids, paths, and metadata to show exactly how the video was produced
+- Production-grade progress: shows each stage for PixVerse generation, downloads, naming, merging, and muxing
+
+6) Tech stack
+- Backend: FastAPI + background worker + SSE job events
+- Video: FFmpeg (concat/xfade, mux audio, burn subtitles, faststart MP4)
+- PixVerse: Platform API integration + PixVerse CLI producer fallback (no fake generation)
+- Frontend: React + TypeScript + framer-motion transitions for smooth demo
+
+7) Demo scenario (recommended)
+Topic: vivo X300 Ultra launch campaign for SEA creators
+- Emphasizes circular camera ring module (correct product detail)
+- 5 scenes x ~6s → >= 30s final output
+
+8) Deliverables
+- Final MP4 in storage/output
+- Provenance sidecar: .pixverse_provenance.json
+- Subtitles artifact: .ass (burn-in source)
+
+9) Risks & mitigations
+- PixVerse Platform API credits = 0 → Use PixVerse CLI producer (requires CLI login) or upload external PixVerse clips per scene
+- TTS flakiness → Chunked TTS + retries, plus offline fallback when network TTS fails
+
