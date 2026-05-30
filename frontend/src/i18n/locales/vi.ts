@@ -187,6 +187,7 @@ export const vi = {
     phaseWriting: 'Viết lại kịch bản cảnh',
     phaseVerify: 'Kiểm chứng số liệu',
     phaseDone: 'Xong',
+    tryDemo: 'Dùng thử Hackathon Demo',
     targetShort: 'short 30–60 giây',
     researchHint:
       'LLM + Wikipedia, kiểm chứng, ảnh từng cảnh (Unsplash/Pexels). Xem lại nguồn trước khi đăng.',

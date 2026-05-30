@@ -234,6 +234,43 @@ export function ResearchVideoView({ targetLang, setTargetLang, onOpenBrandLayout
     }
   };
 
+  const handleHackathonDemo = () => {
+    const demoTopic = 'The Future of AI Phones 2026';
+    setTopic(demoTopic);
+    // Use a small timeout to ensure state is updated before research starts
+    setTimeout(() => {
+      void handleResearchByTopic(demoTopic);
+    }, 100);
+  };
+
+  const handleResearchByTopic = async (specificTopic: string) => {
+    setIsResearching(true);
+    setError(null);
+    setResearchPhase('wikipedia');
+    setResearchStatus(t.researchVideo.phaseWikipedia);
+    setVerificationIssues([]);
+    try {
+      const result = await streamResearchTopic(specificTopic, targetLang, onResearchEvent);
+      setScript(result.script || '');
+      setSources(result.sources || []);
+      setSummary(result.research_summary || '');
+      setConfidence(result.confidence || 'medium');
+      setWikiThumbnailUrl(result.wiki_thumbnail_url || '');
+      setVerificationIssues(result.verification_issues || []);
+      const suggested =
+        result.suggested_duration_seconds || result.target_duration_seconds || DEFAULT_TARGET_DURATION;
+      setTargetDuration(Math.min(60, Math.max(30, suggested)));
+      setSceneReviewCards([]);
+      setWizardStep(2);
+    } catch (err) {
+      setError(extractApiErrorMessage(err, t.researchVideo.researchFailed));
+    } finally {
+      setIsResearching(false);
+      setResearchPhase('');
+      setResearchStatus('');
+    }
+  };
+
   const handlePreviewVoice = async () => {
     if (isPreviewPlaying) {
       audioRef.current?.pause();
@@ -462,6 +499,18 @@ export function ResearchVideoView({ targetLang, setTargetLang, onOpenBrandLayout
                 {t.researchVideo.topicLabel}
               </Label>
               <Badge className="bg-white/5 text-slate-300 border-white/10">{t.researchVideo.stepTopic}</Badge>
+            </div>
+            <div className="flex gap-2 mb-2">
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                className="h-7 text-[10px] border-amber-500/30 text-amber-300 hover:bg-amber-500/10"
+                onClick={handleHackathonDemo}
+                disabled={isResearching}
+              >
+                ✨ {t.researchVideo.tryDemo}
+              </Button>
             </div>
             <Textarea
               value={topic}

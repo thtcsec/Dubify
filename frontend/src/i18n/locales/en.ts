@@ -185,6 +185,7 @@ export const en = {
     phaseWriting: 'Writing scene script',
     phaseVerify: 'Fact-checking',
     phaseDone: 'Done',
+    tryDemo: 'Try Hackathon Demo',
     targetShort: 'short 30–60s',
     researchHint: 'Uses LLM + Wikipedia, fact-check, and scene images (Unsplash/Pexels). Review sources before publish.',
     needTopic: 'Enter a topic first.',
