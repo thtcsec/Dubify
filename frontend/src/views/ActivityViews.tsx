@@ -14,6 +14,7 @@ import api from '@/lib/api';
 import { useJobEvents } from '@/lib/jobEvents';
 import { useI18n } from '@/i18n/I18nProvider';
 import { DeleteAllJobsButton } from '@/components/jobs/DeleteAllJobsButton';
+import { JobEditableName } from '@/components/jobs/JobEditableName';
 import {
   engineModeToPreset,
   presetToEngineMode,
@@ -233,7 +234,15 @@ export function HistoryView() {
                 <div className="flex-1 min-w-0">
                   <div className="flex justify-between items-center mb-1">
                     <div className="flex items-center gap-2">
-                      <h4 className="font-semibold text-sm truncate">{job.filename || 'Untitled'}</h4>
+                      <JobEditableName
+                        jobId={job.id}
+                        filename={job.filename || 'Untitled'}
+                        onRenamed={(name) =>
+                          setJobs((list) =>
+                            list.map((j) => (j.id === job.id ? { ...j, filename: name } : j)),
+                          )
+                        }
+                      />
                       <Badge variant="outline" className="text-[10px] px-1.5 py-0">
                         {job.type || 'dubbing'}
                       </Badge>

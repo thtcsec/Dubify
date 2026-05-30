@@ -7,6 +7,7 @@ import {
   PanelLeftClose,
   PanelLeftOpen,
   Sparkles,
+  FlaskConical,
   Clapperboard,
   Wand2,
   Languages,
@@ -18,6 +19,7 @@ import { useI18n } from '@/i18n/I18nProvider';
 const NAV_MAIN = [
   { id: 'dashboard', icon: LayoutDashboard },
   { id: 'studio', icon: Sparkles },
+  { id: 'researchVideo', icon: FlaskConical, beta: true },
   { id: 'shorts', icon: Wand2 },
   { id: 'editor', icon: Clapperboard },
   { id: 'projects', icon: Layers },
@@ -105,7 +107,16 @@ export function AppSidebar({ currentView, onViewChange, isCollapsed, onToggleCol
                     currentView === item.id ? 'text-blue-400' : ''
                   }`}
                 />
-                {!isCollapsed && <span className="relative z-10 font-medium">{navTitle(item.id)}</span>}
+                {!isCollapsed && (
+                  <span className="relative z-10 font-medium flex items-center gap-2 min-w-0">
+                    <span className="truncate">{navTitle(item.id)}</span>
+                    {'beta' in item && (item as { beta?: boolean }).beta && (
+                      <span className="shrink-0 rounded px-1.5 py-0.5 text-[9px] font-bold uppercase tracking-wide bg-amber-500/25 text-amber-300 border border-amber-500/30">
+                        Beta
+                      </span>
+                    )}
+                  </span>
+                )}
               </Button>
             );
           })}

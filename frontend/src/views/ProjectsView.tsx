@@ -7,6 +7,7 @@ import api from '../lib/api';
 import { useJobEvents } from '../lib/jobEvents';
 import { useI18n } from '@/i18n/I18nProvider';
 import { DeleteAllJobsButton } from '@/components/jobs/DeleteAllJobsButton';
+import { JobEditableName } from '@/components/jobs/JobEditableName';
 
 interface Job {
   id: string;
@@ -151,7 +152,17 @@ export function ProjectsView() {
                   <div className="absolute inset-0 bg-gradient-to-t from-black/80 to-transparent opacity-0 group-hover/video:opacity-100 transition-opacity duration-300"></div>
                 </div>
                 <CardHeader className="p-5 flex-1">
-                  <CardTitle className="text-lg font-bold truncate group-hover:text-indigo-400 transition-colors">{project.filename || 'Untitled Project'}</CardTitle>
+                  <CardTitle className="text-lg font-bold group-hover:text-indigo-400 transition-colors">
+                    <JobEditableName
+                      jobId={project.id}
+                      filename={project.filename || 'Untitled Project'}
+                      onRenamed={(name) =>
+                        setProjects((list) =>
+                          list.map((p) => (p.id === project.id ? { ...p, filename: name } : p)),
+                        )
+                      }
+                    />
+                  </CardTitle>
                   <CardDescription className="flex items-center gap-2 text-xs mt-1">
                     <Clock className="w-3.5 h-3.5 text-indigo-400" /> 
                     <span className="font-semibold text-slate-300">{project.target_lang ? `Target: ${project.target_lang}` : 'dubbing'}</span>
