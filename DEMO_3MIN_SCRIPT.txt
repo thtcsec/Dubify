@@ -69,40 +69,36 @@ Avoid overclaiming in the spoken demo:
 - do not pitch X500 specs as confirmed facts
 - if you mention X500, say "next-wave roadmap and leaks"
 
-Exact spoken demo script (3 minutes)
-------------------------------------
-0:00 - 0:20
-"This is Dubify, a Global Marketing Video Studio powered by PixVerse.
-Instead of just generating one video clip, Dubify helps creators turn a product brief into a complete campaign workflow: research, script, scene review, voice, subtitles, and final export."
+Exact spoken demo script (3 minutes) — UI-first + pre-render fallback
+---------------------------------------------------------------------
+0:00 - 0:20 (Open the app)
+"This is Dubify — a local-first Marketing Video Studio powered by PixVerse.
+The key idea is not just generating a clip. It is a production workflow: script, scene review, PixVerse shots, voiceover, subtitles, and final export."
 
-0:20 - 0:45
-"For this demo, I am using vivo X300 Ultra, a much more current 2026 flagship camera-phone story.
-The goal is not just to create a flashy video. The goal is to show a production pipeline that keeps the content aligned, editable, and ready for marketing use."
+0:20 - 0:45 (Point at the UI / wizard)
+"Here is the end-to-end wizard. You can see each step and progress in real time.
+This matters because video generation can take time, and a hackathon demo must stay smooth and deterministic."
 
-0:45 - 1:10
-"I can enter a product brief here in Marketing Video Studio, or use the built-in 3-minute demo preset.
-Dubify prepares the script and storyboard inside one product before we spend final production effort."
+0:45 - 1:15 (Pain point)
+"The pain point today is that creators bounce between tools: ChatGPT for script, PixVerse for visuals, then CapCut for assembly.
+That breaks alignment, makes reviews hard, and you lose provenance — you cannot easily trace which prompt produced which shot."
 
-0:10 - 1:35
-"Now I approve the script and move into Scene Review.
-This is the key screen for judges.
-Each scene already has a PixVerse-ready cinematic prompt.
-The creator can edit prompts scene by scene, keep a scene, regenerate it, or force fallback if needed."
+1:15 - 1:50 (Show Scene Review)
+"Dubify solves that with Scene Review. Each scene is editable and approvable before we spend production effort.
+You can tweak prompts, approve or reject shots, and keep a human in the loop."
 
-1:35 - 2:00
-"For reliability in a hackathon environment, I pre-generated the visual shots using PixVerse Web and placed them into Dubify's approved import folder.
-That means we still use real PixVerse-generated assets, but avoid API quota and timeout risk during the live demo."
+1:50 - 2:15 (Explain runtime reality + why we will play a pre-rendered output)
+"Generating PixVerse videos live can take a while and may hit rate limits.
+So for the live demo, I will show the real progress pipeline briefly, then play a pre-rendered final video that was produced earlier by the same workflow."
 
-2:00 - 2:30
-"I switch on folder import mode.
-Dubify now picks up the PixVerse clips, adds voiceover, burns subtitles, assembles the final sequence, and preserves provenance so every shot can be traced back to the PixVerse pipeline."
+2:15 - 2:40 (Show progress briefly)
+"When I click Render, Dubify shows detailed progress: TTS chunk synthesis, PixVerse generation or clip import, download and naming, merge, and muxing audio plus subtitles."
 
-2:30 - 2:55
-"What makes Dubify different from ChatGPT plus PixVerse plus CapCut is that this is not just generation.
-It is a production workflow with alignment, review, automation, and post-production in one place."
+2:40 - 2:55 (Play the latest exported video)
+"Now I will play the latest exported MP4. This is campaign-ready: voiceover, burned subtitles, and a 1+ minute multi-shot sequence."
 
-2:55 - 3:00
-"PixVerse gives us the visuals. Dubify turns them into a campaign-ready story."
+2:55 - 3:00 (Closing)
+"PixVerse gives us the visuals. Dubify turns them into a production-grade campaign video with review, automation, and provenance."
 
 Exact click path
 ----------------
