@@ -336,9 +336,15 @@ def _build_pixverse_scene_video(
         def _cli_run(args: list[str]) -> str:
             env = os.environ.copy()
             env.pop("PIXVERSE_API_BASE", None)
+            cli_home = settings.TEMP_DIR / "pixverse_cli_home"
+            cli_home.mkdir(parents=True, exist_ok=True)
+            env["HOME"] = str(cli_home)
+            env["USERPROFILE"] = str(cli_home)
+            cli_cwd = Path(os.environ.get("TEMP") or os.environ.get("TMP") or str(settings.TEMP_DIR)) / "dubify_pixverse_cli"
+            cli_cwd.mkdir(parents=True, exist_ok=True)
             proc = subprocess.run(
                 _cli_prefix() + args,
-                cwd=str(settings.TEMP_DIR),
+                cwd=str(cli_cwd),
                 env=env,
                 capture_output=True,
                 text=True,
