@@ -371,16 +371,13 @@ class TTSService:
                 return False
 
         # Use subprocess to avoid uvicorn event loop conflicts on Windows
-        for attempt in range(retries):
-            try:
-                success = await self._edge_tts_subprocess(text, self.voice, output_path)
-                if success:
-                    return True
-                logger.warning(f"TTS attempt {attempt + 1} produced empty file for: {text[:50]}...")
-            except Exception as e:
-                logger.error(f"Edge-TTS attempt {attempt + 1} failed: {e}")
-                if attempt < retries - 1:
-                    await asyncio.sleep(2 ** attempt)
+        # _edge_tts_subprocess internally handles voice switching (alt voices) and retries
+        try:
+            success = await self._edge_tts_subprocess(text, self.voice, output_path, retries=retries)
+            if success:
+                return True
+        except Exception as e:
+            logger.error(f"Edge-TTS process failed: {e}")
 
         # Network Edge-TTS failed — try offline Piper/SAPI before giving up.
         try:
@@ -560,29 +557,12 @@ class TTSService:
         return re.sub(r"\n{3,}", "\n\n", without_headers).strip()
 
     def _edge_voice_fallbacks(self, primary_voice: str) -> list[str]:
-        """Build fallback voice list — prioritize same gender as primary."""
         voices: list[str] = []
-        # Primary voice first
-        if primary_voice and primary_voice not in voices:
+        if primary_voice:
             voices.append(primary_voice)
-        # Same-gender default (don't switch male→female)
-        default = self.default_voice_for_lang(self.target_lang)
-        if default and default not in voices:
-            # Only add default if same gender hint or if primary is empty
-            if not primary_voice or self._same_gender(primary_voice, default):
-                voices.append(default)
-        # Alt voices — filter by same gender
-        lang = (self.target_lang or "vi").split("-")[0].lower()
-        for candidate in ALT_EDGE_VOICES.get(lang, []):
-            if candidate not in voices:
-                if not primary_voice or self._same_gender(primary_voice, candidate):
-                    voices.append(candidate)
-        # If still only 1 voice, add all alts as last resort
-        if len(voices) < 2:
-            for candidate in ALT_EDGE_VOICES.get(lang, []):
-                if candidate not in voices:
-                    voices.append(candidate)
-        return voices
+        else:
+            voices.append(self.default_voice_for_lang(self.target_lang))
+        return [v for v in voices if v]
 
     @staticmethod
     def _same_gender(voice_a: str, voice_b: str) -> bool:
@@ -692,8 +672,9 @@ class TTSService:
         voices_to_try = self._edge_voice_fallbacks(voice)
 
         last_err = ""
-        for attempt in range(retries):
-            for voice_name in voices_to_try:
+        for voice_name in voices_to_try:
+            for attempt in range(retries):
+                logger.info(f"Edge-TTS attempt {attempt+1} using voice {voice_name} for: {text[:30]}...")
                 ok, last_err = await asyncio.to_thread(
                     self._edge_tts_sync_api,
                     text,
@@ -702,69 +683,18 @@ class TTSService:
                     subtitle_path,
                 )
                 if ok:
-                    return True
+                    # Check for minimum file size to ensure quality
+                    if audio_path.exists() and audio_path.stat().st_size > 1000:
+                        logger.info(f"Edge-TTS success with voice {voice_name}")
+                        return True
+                    last_err = f"tiny audio file ({audio_path.stat().st_size} bytes)"
 
-                if "NoAudioReceived" in last_err and len(text) > 60:
-                    half = len(text) // 2
-                    split_at = text.rfind(" ", 0, half)
-                    if split_at > 20:
-                        part_a = text[:split_at].strip()
-                        part_b = text[split_at:].strip()
-                        temp_a = audio_path.with_suffix(".part_a.mp3")
-                        temp_b = audio_path.with_suffix(".part_b.mp3")
-                        if await self._edge_tts_subprocess(
-                            part_a,
-                            voice_name,
-                            temp_a,
-                            subtitle_path=None,
-                            max_chars=max_chars,
-                            retries=2,
-                            log_failures=False,
-                        ) and await self._edge_tts_subprocess(
-                            part_b,
-                            voice_name,
-                            temp_b,
-                            subtitle_path=None,
-                            max_chars=max_chars,
-                            retries=2,
-                            log_failures=False,
-                        ):
-                            list_file = audio_path.with_suffix(".concat.txt")
-                            list_file.write_text(
-                                "\n".join(
-                                    f"file '{p.resolve().as_posix()}'"
-                                    for p in (temp_a, temp_b)
-                                ),
-                                encoding="utf-8",
-                            )
-                            subprocess.run(
-                                [
-                                    "ffmpeg",
-                                    "-y",
-                                    "-f",
-                                    "concat",
-                                    "-safe",
-                                    "0",
-                                    "-i",
-                                    str(list_file),
-                                    "-c:a",
-                                    "libmp3lame",
-                                    "-q:a",
-                                    "2",
-                                    str(audio_path),
-                                ],
-                                check=True,
-                                stdout=subprocess.DEVNULL,
-                                stderr=subprocess.PIPE,
-                            )
-                            temp_a.unlink(missing_ok=True)
-                            temp_b.unlink(missing_ok=True)
-                            list_file.unlink(missing_ok=True)
-                            if audio_path.exists() and audio_path.stat().st_size > 0:
-                                return True
+                if "NoAudioReceived" in last_err or "No audio was received" in last_err:
+                    await asyncio.sleep(2.0 + (attempt * 1.5))
+                    continue
 
-            if attempt < retries - 1:
-                await asyncio.sleep(1.5 * (attempt + 1))
+                if attempt < retries - 1:
+                    await asyncio.sleep(1.0 * (attempt + 1))
 
         if log_failures:
             logger.error(
