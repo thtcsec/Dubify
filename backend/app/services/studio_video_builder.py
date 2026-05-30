@@ -333,11 +333,24 @@ def _build_pixverse_scene_video(
                 shutil.which("pixverse")
                 or shutil.which("pixverse.cmd")
                 or shutil.which("pixverse.exe")
+                or shutil.which("pixverse.ps1")
             )
             if pixverse:
+                if str(pixverse).lower().endswith(".ps1"):
+                    ps = shutil.which("pwsh") or shutil.which("powershell") or "powershell"
+                    return [ps, "-NoProfile", "-ExecutionPolicy", "Bypass", "-File", pixverse]
                 return [pixverse]
-            npx = shutil.which("npx") or shutil.which("npx.cmd") or shutil.which("npx.exe")
+
+            npx = (
+                shutil.which("npx")
+                or shutil.which("npx.cmd")
+                or shutil.which("npx.exe")
+                or shutil.which("npx.ps1")
+            )
             if npx:
+                if str(npx).lower().endswith(".ps1"):
+                    ps = shutil.which("pwsh") or shutil.which("powershell") or "powershell"
+                    return [ps, "-NoProfile", "-ExecutionPolicy", "Bypass", "-File", npx, "-y", "pixverse@1.1.10"]
                 return [npx, "-y", "pixverse@1.1.10"]
             raise RuntimeError(
                 "PixVerse CLI is not available on PATH. Install Node.js (to get npx) or install PixVerse CLI, "

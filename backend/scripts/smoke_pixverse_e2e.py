@@ -115,12 +115,48 @@ async def main() -> int:
                 return 2
 
     if use_cli:
-        if shutil.which("pixverse") is None and shutil.which("npx") is None:
+        if (
+            shutil.which("pixverse") is None
+            and shutil.which("pixverse.cmd") is None
+            and shutil.which("pixverse.exe") is None
+            and shutil.which("pixverse.ps1") is None
+            and shutil.which("npx") is None
+            and shutil.which("npx.cmd") is None
+            and shutil.which("npx.exe") is None
+            and shutil.which("npx.ps1") is None
+        ):
             print("FAIL: PixVerse CLI not found (need pixverse or npx).")
             return 2
         try:
+            pixverse = (
+                shutil.which("pixverse")
+                or shutil.which("pixverse.cmd")
+                or shutil.which("pixverse.exe")
+                or shutil.which("pixverse.ps1")
+            )
+            npx = (
+                shutil.which("npx")
+                or shutil.which("npx.cmd")
+                or shutil.which("npx.exe")
+                or shutil.which("npx.ps1")
+            )
+            prefix: list[str]
+            if pixverse:
+                if pixverse.lower().endswith(".ps1"):
+                    prefix = ["powershell", "-NoProfile", "-ExecutionPolicy", "Bypass", "-File", pixverse]
+                else:
+                    prefix = [pixverse]
+            elif npx:
+                if npx.lower().endswith(".ps1"):
+                    prefix = ["powershell", "-NoProfile", "-ExecutionPolicy", "Bypass", "-File", npx, "-y", "pixverse@1.1.10"]
+                else:
+                    prefix = [npx, "-y", "pixverse@1.1.10"]
+            else:
+                print("FAIL: PixVerse CLI not found (need pixverse or npx).")
+                return 2
+
             proc = subprocess.run(
-                ["pixverse", "auth", "status", "--json"] if shutil.which("pixverse") else ["npx", "-y", "pixverse@1.1.10", "auth", "status", "--json"],
+                prefix + ["auth", "status", "--json"],
                 cwd=str(settings.TEMP_DIR),
                 capture_output=True,
                 text=True,
