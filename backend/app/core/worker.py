@@ -216,6 +216,17 @@ class BackgroundWorker:
                     progress=round(progress, 1),
                 )
 
+            def update_pixverse_status(provider: str, fallback_used: bool):
+                provider_label = "PixVerse" if provider == "pixverse" else "Local fallback"
+                job_manager.update_job(
+                    job_id,
+                    JobStatus.PROCESSING,
+                    message=f"Step 3/3: {provider_label} storyboard ready for final mux...",
+                    pixverse_enabled=bool(settings.ENABLE_PIXVERSE_PRODUCER),
+                    pixverse_provider=provider,
+                    pixverse_fallback_used=bool(fallback_used),
+                )
+
             allowed_templates = {"tiktok_news", "tiktok_news_pill", "news_scene", "pixelle_story"}
             if studio_template not in allowed_templates:
                 studio_template = settings.STUDIO_DEFAULT_TEMPLATE
@@ -230,8 +241,15 @@ class BackgroundWorker:
                 job_manager.update_job(
                     job_id,
                     JobStatus.PROCESSING,
-                    message="Step 3/3: Rendering HTML scene slides...",
+                    message=(
+                        "Step 3/3: Rendering PixVerse storyboard..."
+                        if settings.ENABLE_PIXVERSE_PRODUCER
+                        else "Step 3/3: Rendering HTML scene slides..."
+                    ),
                     progress=76,
+                    pixverse_enabled=bool(settings.ENABLE_PIXVERSE_PRODUCER),
+                    pixverse_provider="pending" if settings.ENABLE_PIXVERSE_PRODUCER else "html_scenes",
+                    pixverse_fallback_used=False,
                 )
                 success = build_html_scene_video(
                     script=script,
@@ -248,6 +266,8 @@ class BackgroundWorker:
                     research_topic=payload.get("research_topic") or None,
                     wiki_thumbnail_url=str(payload.get("wiki_thumbnail_url") or ""),
                     use_scene_images=bool(use_scene_images),
+                    scene_review_json=str(payload.get("scene_review_json") or ""),
+                    status_callback=update_pixverse_status,
                 )
                 if not success:
                     logger.warning("HTML scene render failed for %s; using classic Ken Burns.", job_id)

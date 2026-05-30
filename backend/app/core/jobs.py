@@ -187,6 +187,7 @@ class JobManager:
         progress: Optional[int] = None,
         parts: Optional[List[Dict[str, Any]]] = None,
         filename: Optional[str] = None,
+        **extra: Any,
     ):
         with self._lock:
             if job_id not in self.jobs:
@@ -214,6 +215,8 @@ class JobManager:
                 job["parts"] = parts
             if filename is not None:
                 job["filename"] = str(filename).strip()[:200] or job.get("filename")
+            for key, value in extra.items():
+                job[key] = value
             self._save()
             self._emit_event("updated", job_id)
 

@@ -7,7 +7,7 @@ plan so the demo can continue if the remote API fails or times out.
 
 from __future__ import annotations
 
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from typing import Callable, Iterable
 
 
@@ -23,12 +23,15 @@ class StoryboardScene:
 
     scene_id: str
     description: str
+    title: str = ""
     subject: str = ""
     action: str = ""
     camera_movement: str = "slow push in"
     lighting_style: str = "cinematic soft light"
     duration_seconds: int = 6
     approved: bool = True
+    prompt_override: str = ""
+    force_fallback: bool = False
 
 
 @dataclass(slots=True)
@@ -79,13 +82,9 @@ class PixVerseAdapter:
         scenes: Iterable[StoryboardScene],
         aspect_ratio: str = "9:16",
     ) -> PixVerseRenderPlan:
-        approved = [scene for scene in scenes if scene.approved]
+        approved = self._normalize_storyboard([scene for scene in scenes if scene.approved])
         if not approved:
             raise ValueError("No approved storyboard scenes available for PixVerse.")
-        if not MIN_SHOTS <= len(approved) <= MAX_SHOTS:
-            raise ValueError(
-                f"PixVerse storyboard must contain {MIN_SHOTS}-{MAX_SHOTS} approved shots."
-            )
 
         shots = [
             PixVerseShot(
@@ -101,6 +100,9 @@ class PixVerseAdapter:
 
     def scene_to_prompt(self, scene: StoryboardScene) -> str:
         """Convert a reviewed scene into a PixVerse-friendly prompt."""
+
+        if scene.prompt_override.strip():
+            return scene.prompt_override.strip()
 
         subject = (scene.subject or self._extract_subject(scene.description)).strip()
         action = (scene.action or self._extract_action(scene.description)).strip()
@@ -177,3 +179,75 @@ class PixVerseAdapter:
         lowered = " ".join(description.split()).strip().lower()
         return lowered[:80] or "subtle cinematic motion"
 
+    def _normalize_storyboard(
+        self,
+        scenes: list[StoryboardScene],
+    ) -> list[StoryboardScene]:
+        items = [replace(scene) for scene in scenes if scene.approved]
+        if not items:
+            return []
+
+        while len(items) < MIN_SHOTS:
+            split_index = max(range(len(items)), key=lambda idx: len(items[idx].description or items[idx].title))
+            left, right = self._split_scene(items[split_index])
+            items[split_index:split_index + 1] = [left, right]
+
+        if len(items) > MAX_SHOTS:
+            head = items[: MAX_SHOTS - 1]
+            tail = items[MAX_SHOTS - 1 :]
+            merged_description = " ".join(filter(None, [scene.description for scene in tail])).strip()
+            merged_title = " / ".join(filter(None, [scene.title for scene in tail[:2]])).strip() or "Final beats"
+            merged = replace(
+                tail[0],
+                scene_id=f"{tail[0].scene_id}-merged",
+                title=merged_title,
+                description=merged_description,
+                duration_seconds=max(
+                    MIN_SHOT_SECONDS,
+                    min(MAX_SHOT_SECONDS, sum(scene.duration_seconds for scene in tail)),
+                ),
+                prompt_override="",
+            )
+            items = head + [merged]
+
+        return items
+
+    def _split_scene(self, scene: StoryboardScene) -> tuple[StoryboardScene, StoryboardScene]:
+        parts = self._split_description(scene.description or scene.title or "Main scene")
+        left_text, right_text = parts
+        left = replace(
+            scene,
+            scene_id=f"{scene.scene_id}-a",
+            title=f"{scene.title or 'Scene'} A".strip(),
+            description=left_text,
+            duration_seconds=self._normalize_duration(max(MIN_SHOT_SECONDS, scene.duration_seconds // 2 or 5)),
+            prompt_override="",
+        )
+        right = replace(
+            scene,
+            scene_id=f"{scene.scene_id}-b",
+            title=f"{scene.title or 'Scene'} B".strip(),
+            description=right_text,
+            duration_seconds=self._normalize_duration(max(MIN_SHOT_SECONDS, scene.duration_seconds - left.duration_seconds)),
+            prompt_override="",
+        )
+        return left, right
+
+    @staticmethod
+    def _split_description(description: str) -> tuple[str, str]:
+        cleaned = " ".join(description.split()).strip()
+        if not cleaned:
+            return "Main visual beat.", "Supporting visual beat."
+
+        sentences = [part.strip() for part in cleaned.replace("!", ".").replace("?", ".").split(".") if part.strip()]
+        if len(sentences) >= 2:
+            mid = max(1, len(sentences) // 2)
+            left = ". ".join(sentences[:mid]).strip() + "."
+            right = ". ".join(sentences[mid:]).strip() + "."
+            return left, right
+
+        words = cleaned.split()
+        mid = max(1, len(words) // 2)
+        left = " ".join(words[:mid]).strip()
+        right = " ".join(words[mid:]).strip()
+        return left or cleaned, right or cleaned

@@ -137,6 +137,7 @@ async def create_studio_video(
     wiki_thumbnail_url: str = Form(""),
     use_scene_images: bool = Form(settings.STUDIO_USE_SCENE_IMAGES),
     project_name: str = Form(""),
+    scene_review_json: str = Form(""),
 ):
     """Create a studio video from script; background image is optional (gradient if omitted)."""
     # Input validation
@@ -224,6 +225,7 @@ async def create_studio_video(
         "wiki_thumbnail_url": wiki_thumbnail_url.strip(),
         "use_scene_images": use_scene_images,
         "project_name": display_name,
+        "scene_review_json": scene_review_json.strip(),
     })
 
     return {"job_id": job_id}
