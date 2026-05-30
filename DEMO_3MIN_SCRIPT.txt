@@ -1,0 +1,226 @@
+Dubify Hackathon Demo Pack (3-minute version)
+=============================================
+
+Positioning
+-----------
+Dubify is not a simple video generator.
+Dubify is a Global Marketing Video Studio that turns one product brief into a PixVerse-powered campaign workflow:
+
+Product brief
+-> research
+-> script
+-> scene review
+-> PixVerse assets
+-> voice/subtitles
+-> export
+
+Core story for judges
+---------------------
+PixVerse generates the visual shots.
+Dubify solves everything around it:
+- research alignment
+- storyboard review
+- prompt standardization
+- voiceover
+- subtitles
+- final assembly
+- provenance
+
+One-line unfair advantage
+-------------------------
+Compared with ChatGPT + PixVerse + CapCut, Dubify adds a structured production workflow with human-in-the-loop scene approval, automated post-production, and provenance-backed PixVerse asset verification.
+
+Demo runtime reality
+--------------------
+If the machine is warm and PixVerse clips are already prepared:
+- Research live: around 20-45 seconds
+- Approve Script + Scene Review: around 20-30 seconds
+- Render with folder clips: around 40-90 seconds
+- Total: usually around 1.5 to 2.8 minutes
+
+Recommendation:
+- Yes, record a backup screen capture.
+- For the live demo, pre-generate PixVerse clips first.
+- Keep one final exported MP4 ready in case FFmpeg or TTS stalls.
+
+Primary demo topic for the app
+------------------------------
+Paste this into Dubify Topic:
+
+vivo X300 Ultra launch campaign for Southeast Asia creators: focus on dual 200MP cameras, cinematic mobile filmmaking, pro-grade zoom, and creator-first video workflow.
+
+Why this topic
+--------------
+- It is much more current than X200 Pro.
+- X300 Ultra is already the stronger 2026 flagship story.
+- It fits Marketing / Content Creator positioning.
+- It naturally justifies PixVerse cinematic shots.
+
+Safe product angles to emphasize
+--------------------------------
+Use these angles in the app story and speech:
+- dual 200MP camera system
+- creator-first camera flagship
+- cinematic mobile filmmaking
+- strong zoom storytelling
+- fast charging and premium flagship positioning
+
+Avoid overclaiming in the spoken demo:
+- do not pitch X500 specs as confirmed facts
+- if you mention X500, say "next-wave roadmap and leaks"
+
+Exact spoken demo script (3 minutes)
+------------------------------------
+0:00 - 0:20
+"This is Dubify, a Global Marketing Video Studio powered by PixVerse.
+Instead of just generating one video clip, Dubify helps creators turn a product brief into a complete campaign workflow: research, script, scene review, voice, subtitles, and final export."
+
+0:20 - 0:45
+"For this demo, I am using vivo X300 Ultra, a much more current 2026 flagship camera-phone story.
+The goal is not just to create a flashy video. The goal is to show a production pipeline that keeps the content aligned, editable, and ready for marketing use."
+
+0:45 - 1:10
+"I can enter a product brief here in Marketing Video Studio, or use the built-in 3-minute demo preset.
+Dubify prepares the script and storyboard inside one product before we spend final production effort."
+
+0:10 - 1:35
+"Now I approve the script and move into Scene Review.
+This is the key screen for judges.
+Each scene already has a PixVerse-ready cinematic prompt.
+The creator can edit prompts scene by scene, keep a scene, regenerate it, or force fallback if needed."
+
+1:35 - 2:00
+"For reliability in a hackathon environment, I pre-generated the visual shots using PixVerse Web and placed them into Dubify's approved import folder.
+That means we still use real PixVerse-generated assets, but avoid API quota and timeout risk during the live demo."
+
+2:00 - 2:30
+"I switch on folder import mode.
+Dubify now picks up the PixVerse clips, adds voiceover, burns subtitles, assembles the final sequence, and preserves provenance so every shot can be traced back to the PixVerse pipeline."
+
+2:30 - 2:55
+"What makes Dubify different from ChatGPT plus PixVerse plus CapCut is that this is not just generation.
+It is a production workflow with alignment, review, automation, and post-production in one place."
+
+2:55 - 3:00
+"PixVerse gives us the visuals. Dubify turns them into a campaign-ready story."
+
+Exact click path
+----------------
+1. Open Dubify.
+2. Click "Marketing Video Studio".
+3. Click "Open 3-minute demo".
+4. In Scene Review, quickly show that prompts are editable.
+5. Click "Continue to Render".
+8. In Render step:
+   - aspect ratio: 9:16
+   - voice: choose the most stable voice you have tested
+   - enable "Use PixVerse clips from folder"
+6. Click "Render video".
+7. While rendering, explain provenance + folder workflow.
+8. Play final output.
+
+Suggested render settings
+-------------------------
+- Aspect ratio: 9:16
+- Voice:
+  - preferred: one ElevenLabs voice you already tested successfully
+  - fallback: Hoai My or the best stable Vietnamese voice in your setup
+- Use folder clip mode: ON
+
+Exact scene structure to keep in your head
+------------------------------------------
+Scene 1: Hook
+Scene 2: Camera system
+Scene 3: Creator workflow
+Scene 4: Zoom / cinematic power
+Scene 5: Call to action
+
+Short script text to keep or paste into the app if needed
+---------------------------------------------------------
+If live research is unstable, use this edited script structure in Step 2:
+
+[Scene 1]
+vivo X300 Ultra is not just another flagship phone. It is being positioned as a creator-first camera system built for cinematic mobile storytelling.
+
+[Scene 2]
+Its dual 200MP camera setup pushes the product into a different tier, combining high-detail capture with professional-style zoom and a more serious imaging identity.
+
+[Scene 3]
+For creators, the value is not only hardware. It is the speed of turning one idea into a polished campaign asset that looks premium on short-form platforms.
+
+[Scene 4]
+That is where Dubify and PixVerse work together. PixVerse generates the visual beats, and Dubify handles workflow, voice, subtitles, and final assembly.
+
+[Scene 5]
+The result is a faster path from product story to campaign-ready video, with human review still in the loop before export.
+
+Manual PixVerse prompts for the 5 demo shots
+--------------------------------------------
+Use these if you want tighter control than the auto-generated prompts.
+
+Shot 1 - Hook
+Subject: vivo X300 Ultra hero device on a premium dark stage. Action: dramatic reveal with light streaks and floating lens reflections. Camera movement: slow push in and subtle orbit. Lighting and style: PixVerse V6, cinematic product commercial, ultra detailed, premium contrast, luxury tech launch. Context: flagship smartphone opening hero shot for Southeast Asia creator campaign.
+
+Shot 2 - Camera system
+Subject: close-up of vivo X300 Ultra camera island with dual 200MP storytelling emphasis. Action: macro camera module reveal with precision highlights and glass reflections. Camera movement: slow macro slide and tilt. Lighting and style: PixVerse V6, cinematic macro commercial, sharp metal texture, glossy premium look. Context: emphasize creator-grade camera identity.
+
+Shot 3 - Creator workflow
+Subject: young creator filming with vivo X300 Ultra in an urban night setting. Action: switching from capture to editing mindset, confident creator energy. Camera movement: handheld cinematic drift. Lighting and style: PixVerse V6, social-first premium ad, neon city bokeh, realistic cinematic motion. Context: mobile creator workflow and content production.
+
+Shot 4 - Zoom power
+Subject: city skyline and portrait subject captured through long-range mobile zoom. Action: smooth zoom storytelling with stable focus and premium lens feel. Camera movement: slow zoom and lateral drift. Lighting and style: PixVerse V6, cinematic telephoto look, polished ad aesthetic, realistic depth compression. Context: show pro-grade zoom and storytelling power.
+
+Shot 5 - Closing CTA
+Subject: vivo X300 Ultra centered with bold title card and campaign finish. Action: product rotates slightly while logo and creator message resolve on screen. Camera movement: smooth orbit and settle. Lighting and style: PixVerse V6, premium launch finale, high-contrast cinematic lighting, luxury smartphone ad. Context: final campaign-ready call to action.
+
+Recommended PixVerse generation settings
+----------------------------------------
+- Model: PixVerse V6
+- Ratio: 9:16
+- Duration: 6 seconds each
+- Quality: 720p for draft, higher if credits allow
+- Generate 5 clips total
+
+Required filenames after download
+---------------------------------
+Rename the downloaded PixVerse clips exactly like this:
+- 01_hook.mp4
+- 02_camera.mp4
+- 03_creator.mp4
+- 04_zoom.mp4
+- 05_cta.mp4
+
+Folder to place clips
+---------------------
+Put all clips here:
+
+d:\tu_projects\Dubify\storage\input\pixverse_smoke
+
+What to say if a judge asks:
+"So is this just ChatGPT + PixVerse + FFmpeg?"
+------------------------------------------------
+No.
+ChatGPT can draft text, PixVerse can generate clips, and FFmpeg can merge files.
+Dubify adds the production workflow that connects them:
+- research alignment
+- scene-level approval
+- prompt normalization
+- voice and subtitle automation
+- export packaging
+- provenance
+
+What to say if a judge asks:
+"Why not use PixVerse API directly?"
+-----------------------------------
+Dubify supports API-style provenance logic, but the hackathon environment gives many teams Web credits first.
+For demo reliability, we use real PixVerse Web-generated clips and import them through a controlled workflow, which is still fully compliant with the guidebook and reduces live-failure risk.
+
+Last-minute checklist
+---------------------
+- Research topic copied
+- PixVerse 5 clips generated
+- Filenames renamed correctly
+- Clips placed in pixverse_smoke folder
+- Voice tested once before demo
+- One final backup MP4 ready
+- One backup screen recording ready

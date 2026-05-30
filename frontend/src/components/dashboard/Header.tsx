@@ -1,4 +1,5 @@
 import { useI18n } from '@/i18n/I18nProvider';
+import { AnimatePresence, motion } from 'framer-motion';
 
 interface HeaderProps {
   currentView: string;
@@ -14,7 +15,18 @@ export function DashboardHeader({ currentView }: HeaderProps) {
       <div className="flex items-center gap-2 text-sm font-medium">
         <span className="text-slate-400">{t.header.breadcrumb}</span>
         <span className="text-slate-600">/</span>
-        <span className="text-white">{title}</span>
+        <AnimatePresence mode="wait">
+          <motion.span
+            key={currentView}
+            initial={{ opacity: 0, y: 6, filter: 'blur(4px)' }}
+            animate={{ opacity: 1, y: 0, filter: 'blur(0px)' }}
+            exit={{ opacity: 0, y: -6, filter: 'blur(4px)' }}
+            transition={{ duration: 0.22, ease: [0.22, 1, 0.36, 1] }}
+            className="text-white"
+          >
+            {title}
+          </motion.span>
+        </AnimatePresence>
       </div>
     </header>
   );

@@ -1,0 +1,160 @@
+Dubify Judge Q&A
+================
+
+Use this file as a fast-answer sheet during demo or live Q&A.
+
+Identity
+--------
+Project name:
+Dubify
+
+One-line pitch:
+Dubify is a Global Marketing Video Studio that combines research, storyboard review, PixVerse-powered visuals, voiceover, subtitles, and export into one production workflow.
+
+What problem does Dubify solve?
+-------------------------------
+Most creators can generate isolated AI clips, but they still struggle with:
+- aligning the story to the product brief
+- reviewing scenes before spending credits
+- producing voice and subtitles quickly
+- assembling campaign-ready output
+
+Dubify turns those scattered tools into one human-in-the-loop production pipeline.
+
+Q1. Is this just ChatGPT + PixVerse + FFmpeg?
+---------------------------------------------
+Short answer:
+No.
+
+Long answer:
+ChatGPT can draft text, PixVerse can generate visual clips, and FFmpeg can technically merge files.
+Dubify adds the production workflow between those steps:
+- brief-to-script alignment
+- scene review before final render
+- standardized PixVerse prompts per shot
+- voiceover and subtitle automation
+- final assembly and export
+- provenance for PixVerse assets
+
+That workflow layer is the product, not just the render.
+
+Q2. Why does this belong in the PixVerse Video Generation Track?
+----------------------------------------------------------------
+Because PixVerse is the visual generation engine inside the workflow.
+The final video uses PixVerse-generated scene assets, and Dubify builds a practical product experience around them.
+
+This matches the guidebook requirement:
+- use PixVerse to create the AI video
+- provide functionality beyond playback
+
+Dubify's beyond-playback functionality is the production pipeline itself.
+
+Q3. Why not call PixVerse API directly?
+---------------------------------------
+We support a hybrid architecture because hackathon teams often receive Web membership credits before they receive or purchase Platform API credits.
+
+For live-demo reliability, Dubify supports:
+- PixVerse API-style workflow when available
+- PixVerse Web/CLI asset import when that is the stable path
+
+This avoids quota, timeout, and live-failure risk while still keeping real PixVerse-generated assets inside the pipeline.
+
+Q4. How do you prove the shots are actually from PixVerse?
+----------------------------------------------------------
+Dubify stores provenance data for the final asset flow:
+- sidecar JSON for PixVerse output/provenance
+- output metadata in the final video
+- provider label in the job status
+
+For the external-clips demo path, the final render is marked as using PixVerse external assets rather than pretending it was API-generated.
+
+Q5. What is your unfair advantage over simple prompt-to-video tools?
+--------------------------------------------------------------------
+Our unfair advantage is structured post-production workflow:
+- product brief to campaign script
+- scene-level human approval
+- PixVerse prompt normalization
+- voiceover
+- subtitles
+- export packaging
+
+Simple prompt-to-video tools stop at generation.
+Dubify continues into review, adaptation, and campaign-ready delivery.
+
+Q6. Why is human-in-the-loop important here?
+--------------------------------------------
+Because fully automatic AI video generation often produces low-quality or misaligned output.
+
+Dubify keeps creators in control at the highest-value checkpoint:
+- script review
+- scene review
+- prompt editing
+- asset approval before final export
+
+That improves quality, reduces wasted credits, and keeps the workflow commercially useful.
+
+Q7. What is the current best demo story?
+----------------------------------------
+The cleanest demo story is:
+
+Product brief
+-> research
+-> editable script
+-> scene review
+-> PixVerse clips
+-> voice/subtitles
+-> final marketing video
+
+Do not over-demo unrelated capabilities in one run.
+
+Q8. Is Dubify only for research videos?
+---------------------------------------
+No.
+
+The current hackathon demo path uses a marketing-video workflow because it is the strongest way to show PixVerse + product utility together.
+
+The broader platform direction includes:
+- marketing campaign production
+- localization
+- content repurposing
+
+But for the hackathon, we keep the live path focused.
+
+Q9. Where does Dubify become more valuable than CapCut?
+-------------------------------------------------------
+CapCut helps after you already have assets.
+
+Dubify helps before and during production:
+- turns a brief into a structured storyboard
+- prepares PixVerse prompts
+- organizes scene review
+- automates voice + subtitle + final render
+
+So the value is not only editing.
+It is workflow orchestration.
+
+Q10. Why is this useful for marketing teams?
+--------------------------------------------
+Marketing teams need speed and consistency.
+
+Dubify lets them go from one product brief to a campaign-ready story faster:
+- fewer manual handoffs
+- faster scene approval
+- faster voice/subtitle packaging
+- cleaner export workflow
+
+That is especially useful for creator-led launches and social-first campaigns.
+
+Q11. What happens after the hackathon?
+--------------------------------------
+The strongest next steps are:
+- multi-language campaign variants
+- content repurposing into multiple formats
+- deeper clip editing / asset replacement
+- stronger motion system beyond still-scene fallback
+
+The hackathon build proves the core workflow and PixVerse integration path.
+
+Q12. If I am a judge, what should I remember in one sentence?
+-------------------------------------------------------------
+PixVerse gives Dubify the visual shots, and Dubify turns them into a reviewable, voiced, subtitled, campaign-ready production workflow.

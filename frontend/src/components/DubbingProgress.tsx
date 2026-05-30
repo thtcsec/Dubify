@@ -1,4 +1,5 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
+import { AnimatePresence, motion } from 'framer-motion';
 import { Card, CardContent, CardHeader, CardTitle } from '../components/ui/card';
 
 import { Badge } from '../components/ui/badge';
@@ -126,9 +127,9 @@ export const DubbingProgress = ({ jobId, onComplete, onError }: DubbingProgressP
   };
 
   if (!data) return (
-    <div className="flex items-center justify-center py-20">
+    <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="flex items-center justify-center py-20">
       <Loader2 className="animate-spin w-8 h-8 text-indigo-400" />
-    </div>
+    </motion.div>
   );
 
   const isCompleted = data.status === 'completed';
@@ -153,7 +154,12 @@ export const DubbingProgress = ({ jobId, onComplete, onError }: DubbingProgressP
   const progressValue = data.progress ?? (isCompleted ? 100 : isProcessing ? 50 : isFailed || isCancelled ? 0 : 0);
 
   return (
-    <div className="relative group w-full max-w-lg mx-auto mt-8">
+    <motion.div
+      initial={{ opacity: 0, y: 18 }}
+      animate={{ opacity: 1, y: 0 }}
+      transition={{ duration: 0.3, ease: [0.22, 1, 0.36, 1] }}
+      className="relative group w-full max-w-lg mx-auto mt-8"
+    >
       <div className="pointer-events-none absolute -inset-0.5 bg-gradient-to-b from-indigo-500/20 to-purple-500/20 rounded-2xl blur opacity-100 transition duration-500" />
       <Card className="relative z-10 border border-white/10 bg-slate-900/80 backdrop-blur-xl shadow-2xl overflow-visible rounded-2xl">
         <CardHeader className="bg-white/5 pb-4 border-b border-white/5">
@@ -209,26 +215,36 @@ export const DubbingProgress = ({ jobId, onComplete, onError }: DubbingProgressP
               </span>
             </div>
             <div className="relative h-2 w-full bg-slate-800 rounded-full overflow-hidden">
-              <div 
-                className={`absolute left-0 top-0 bottom-0 transition-all duration-500 ease-out ${isCompleted ? 'bg-green-500' : isFailed ? 'bg-red-500' : isCancelled ? 'bg-orange-500' : 'bg-gradient-to-r from-indigo-500 to-purple-500'}`}
-                style={{ width: `${progressValue}%` }}
+              <motion.div
+                className={`absolute left-0 top-0 bottom-0 ${isCompleted ? 'bg-green-500' : isFailed ? 'bg-red-500' : isCancelled ? 'bg-orange-500' : 'bg-gradient-to-r from-indigo-500 to-purple-500'}`}
+                animate={{ width: `${progressValue}%` }}
+                transition={{ type: 'spring', stiffness: 120, damping: 22 }}
               >
                 {!isCompleted && !isFailed && !isCancelled && (
                    <div className="absolute inset-0 bg-white/20 w-full animate-[shimmer_2s_infinite]"></div>
                 )}
-              </div>
+              </motion.div>
             </div>
           </div>
 
         {/* Live status message */}
-        <div className="text-sm text-slate-400 italic min-h-[1.5rem]">
-          {isCompleted ? `✅ ${t.progress.readyMessage}` :
-           isFailed ? `❌ ${data.error}` :
-           isCancelled ? `🚫 ${t.progress.cancelledMessage}` :
-           isPaused ? `⏸️ ${t.progress.pausedMessage}` :
-           data.message ? `⏳ ${data.message}` :
-           t.progress.pending}
-        </div>
+        <AnimatePresence mode="wait">
+          <motion.div
+            key={`${data.status}-${data.message || data.error || 'idle'}`}
+            initial={{ opacity: 0, y: 6 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0, y: -6 }}
+            transition={{ duration: 0.2 }}
+            className="text-sm text-slate-400 italic min-h-[1.5rem]"
+          >
+            {isCompleted ? `✅ ${t.progress.readyMessage}` :
+             isFailed ? `❌ ${data.error}` :
+             isCancelled ? `🚫 ${t.progress.cancelledMessage}` :
+             isPaused ? `⏸️ ${t.progress.pausedMessage}` :
+             data.message ? `⏳ ${data.message}` :
+             t.progress.pending}
+          </motion.div>
+        </AnimatePresence>
 
         {/* Action buttons */}
         <div className="flex gap-2">
@@ -320,6 +336,6 @@ export const DubbingProgress = ({ jobId, onComplete, onError }: DubbingProgressP
         )}
       </CardContent>
     </Card>
-    </div>
+    </motion.div>
   );
 };

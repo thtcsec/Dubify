@@ -13,6 +13,7 @@ import {
   Languages,
   LayoutTemplate,
 } from 'lucide-react';
+import { motion } from 'framer-motion';
 import { Button } from '../components/ui/button';
 import { useI18n } from '@/i18n/I18nProvider';
 
@@ -92,15 +93,21 @@ export function AppSidebar({ currentView, onViewChange, isCollapsed, onToggleCol
                   currentView === item.id ? 'text-white' : 'text-slate-400 hover:text-white'
                 } ${isCollapsed ? 'px-2' : 'px-4'}`}
               >
-                <div
-                  className={`absolute inset-0 transition-opacity duration-300 ${
-                    currentView === item.id
-                      ? 'bg-gradient-to-r from-blue-500/20 to-purple-500/20 opacity-100'
-                      : 'bg-white/5 opacity-0 group-hover:opacity-100'
-                  }`}
-                />
-                {currentView === item.id && (
-                  <div className="absolute left-0 top-1/4 bottom-1/4 w-1 bg-gradient-to-b from-blue-400 to-purple-400 rounded-r-full shadow-[0_0_10px_rgba(96,165,250,0.8)]" />
+                {currentView === item.id ? (
+                  <>
+                    <motion.div
+                      layoutId="sidebar-active-bg"
+                      className="absolute inset-0 bg-gradient-to-r from-blue-500/20 to-purple-500/20"
+                      transition={{ type: 'spring', stiffness: 320, damping: 28 }}
+                    />
+                    <motion.div
+                      layoutId="sidebar-active-rail"
+                      className="absolute left-0 top-1/4 bottom-1/4 w-1 bg-gradient-to-b from-blue-400 to-purple-400 rounded-r-full shadow-[0_0_10px_rgba(96,165,250,0.8)]"
+                      transition={{ type: 'spring', stiffness: 320, damping: 28 }}
+                    />
+                  </>
+                ) : (
+                  <div className="absolute inset-0 bg-white/5 opacity-0 transition-opacity duration-300 group-hover:opacity-100" />
                 )}
                 <Icon
                   className={`relative z-10 h-5 w-5 shrink-0 transition-transform duration-300 group-hover:scale-110 ${
@@ -134,15 +141,21 @@ export function AppSidebar({ currentView, onViewChange, isCollapsed, onToggleCol
                   currentView === item.id ? 'text-white' : 'text-slate-400 hover:text-white'
                 } ${isCollapsed ? 'px-2' : 'px-4'}`}
               >
-                <div
-                  className={`absolute inset-0 transition-opacity duration-300 ${
-                    currentView === item.id
-                      ? 'bg-gradient-to-r from-blue-500/20 to-purple-500/20 opacity-100'
-                      : 'bg-white/5 opacity-0 group-hover:opacity-100'
-                  }`}
-                />
-                {currentView === item.id && (
-                  <div className="absolute left-0 top-1/4 bottom-1/4 w-1 bg-gradient-to-b from-blue-400 to-purple-400 rounded-r-full shadow-[0_0_10px_rgba(96,165,250,0.8)]" />
+                {currentView === item.id ? (
+                  <>
+                    <motion.div
+                      layoutId="sidebar-active-bg"
+                      className="absolute inset-0 bg-gradient-to-r from-blue-500/20 to-purple-500/20"
+                      transition={{ type: 'spring', stiffness: 320, damping: 28 }}
+                    />
+                    <motion.div
+                      layoutId="sidebar-active-rail"
+                      className="absolute left-0 top-1/4 bottom-1/4 w-1 bg-gradient-to-b from-blue-400 to-purple-400 rounded-r-full shadow-[0_0_10px_rgba(96,165,250,0.8)]"
+                      transition={{ type: 'spring', stiffness: 320, damping: 28 }}
+                    />
+                  </>
+                ) : (
+                  <div className="absolute inset-0 bg-white/5 opacity-0 transition-opacity duration-300 group-hover:opacity-100" />
                 )}
                 <Icon
                   className={`relative z-10 h-5 w-5 shrink-0 transition-transform duration-300 group-hover:scale-110 ${
@@ -179,15 +192,21 @@ export function AppSidebar({ currentView, onViewChange, isCollapsed, onToggleCol
                   currentView === item.id ? 'text-white' : 'text-slate-400 hover:text-white'
                 } ${isCollapsed ? 'px-2' : 'px-4'}`}
               >
-                <div
-                  className={`absolute inset-0 transition-opacity duration-300 ${
-                    currentView === item.id
-                      ? 'bg-gradient-to-r from-cyan-500/20 to-indigo-500/20 opacity-100'
-                      : 'bg-white/5 opacity-0 group-hover:opacity-100'
-                  }`}
-                />
-                {currentView === item.id && (
-                  <div className="absolute left-0 top-1/4 bottom-1/4 w-1 bg-gradient-to-b from-cyan-400 to-indigo-400 rounded-r-full shadow-[0_0_10px_rgba(34,211,238,0.6)]" />
+                {currentView === item.id ? (
+                  <>
+                    <motion.div
+                      layoutId="sidebar-active-bg"
+                      className="absolute inset-0 bg-gradient-to-r from-cyan-500/20 to-indigo-500/20"
+                      transition={{ type: 'spring', stiffness: 320, damping: 28 }}
+                    />
+                    <motion.div
+                      layoutId="sidebar-active-rail"
+                      className="absolute left-0 top-1/4 bottom-1/4 w-1 bg-gradient-to-b from-cyan-400 to-indigo-400 rounded-r-full shadow-[0_0_10px_rgba(34,211,238,0.6)]"
+                      transition={{ type: 'spring', stiffness: 320, damping: 28 }}
+                    />
+                  </>
+                ) : (
+                  <div className="absolute inset-0 bg-white/5 opacity-0 transition-opacity duration-300 group-hover:opacity-100" />
                 )}
                 <Icon
                   className={`relative z-10 h-5 w-5 shrink-0 transition-transform duration-300 group-hover:scale-110 ${

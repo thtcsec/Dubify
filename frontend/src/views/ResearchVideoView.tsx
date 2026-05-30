@@ -1,9 +1,11 @@
 import { useState, useEffect, useRef, useMemo } from 'react';
+import { AnimatePresence, motion } from 'framer-motion';
 import { Sparkles, Search, ExternalLink, AlertTriangle, Film, Loader2, CheckCircle2, Wand2 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
 import { Badge } from '@/components/ui/badge';
+import { Switch } from '@/components/ui/switch';
 import { DubbingProgress } from '@/components/DubbingProgress';
 import { StudioOutputSettings } from '@/components/studio/StudioOutputSettings';
 import { StudioProjectPreview, type SceneReviewCard } from '@/components/studio/StudioProjectPreview';
@@ -36,6 +38,97 @@ interface ResearchVideoViewProps {
 const DEFAULT_TARGET_DURATION = 45;
 type WizardStep = 1 | 2 | 3 | 4;
 type DemoScenarioKey = 'marketing' | 'gaming' | 'film';
+
+const HACKATHON_DEMO_TOPIC =
+  'vivo X300 Ultra launch campaign for Southeast Asia creators: focus on dual 200MP cameras, cinematic mobile filmmaking, pro-grade zoom, and creator-first video workflow.';
+
+const HACKATHON_DEMO_SCRIPT = `[Scene 1]
+vivo X300 Ultra is not just another flagship phone. It is being positioned as a creator-first camera system built for cinematic mobile storytelling.
+
+[Scene 2]
+Its dual 200MP camera setup pushes the product into a different tier, combining high-detail capture with professional-style zoom and a more serious imaging identity.
+
+[Scene 3]
+For creators, the value is not only hardware. It is the speed of turning one idea into a polished campaign asset that looks premium on short-form platforms.
+
+[Scene 4]
+That is where Dubify and PixVerse work together. PixVerse generates the visual beats, and Dubify handles workflow, voice, subtitles, and final assembly.
+
+[Scene 5]
+The result is a faster path from product story to campaign-ready video, with human review still in the loop before export.`;
+
+const HACKATHON_DEMO_SCENES: SceneReviewCard[] = [
+  {
+    id: 'scene_1',
+    title: 'Scene 1',
+    text: 'vivo X300 Ultra is not just another flagship phone. It is being positioned as a creator-first camera system built for cinematic mobile storytelling.',
+    prompt:
+      'Subject: vivo X300 Ultra hero device on a premium dark stage. Action: dramatic reveal with light streaks and floating lens reflections. Camera movement: slow push in and subtle orbit. Lighting and style: PixVerse V6, cinematic product commercial, ultra detailed, premium contrast, luxury tech launch. Context: flagship smartphone opening hero shot for Southeast Asia creator campaign.',
+    durationSeconds: 6,
+    approved: true,
+    forceFallback: false,
+    status: 'kept',
+  },
+  {
+    id: 'scene_2',
+    title: 'Scene 2',
+    text: 'Its dual 200MP camera setup pushes the product into a different tier, combining high-detail capture with professional-style zoom and a more serious imaging identity.',
+    prompt:
+      'Subject: close-up of vivo X300 Ultra camera island with dual 200MP storytelling emphasis. Action: macro camera module reveal with precision highlights and glass reflections. Camera movement: slow macro slide and tilt. Lighting and style: PixVerse V6, cinematic macro commercial, sharp metal texture, glossy premium look. Context: emphasize creator-grade camera identity.',
+    durationSeconds: 6,
+    approved: true,
+    forceFallback: false,
+    status: 'kept',
+  },
+  {
+    id: 'scene_3',
+    title: 'Scene 3',
+    text: 'For creators, the value is not only hardware. It is the speed of turning one idea into a polished campaign asset that looks premium on short-form platforms.',
+    prompt:
+      'Subject: young creator filming with vivo X300 Ultra in an urban night setting. Action: switching from capture to editing mindset, confident creator energy. Camera movement: handheld cinematic drift. Lighting and style: PixVerse V6, social-first premium ad, neon city bokeh, realistic cinematic motion. Context: mobile creator workflow and content production.',
+    durationSeconds: 6,
+    approved: true,
+    forceFallback: false,
+    status: 'kept',
+  },
+  {
+    id: 'scene_4',
+    title: 'Scene 4',
+    text: 'That is where Dubify and PixVerse work together. PixVerse generates the visual beats, and Dubify handles workflow, voice, subtitles, and final assembly.',
+    prompt:
+      'Subject: city skyline and portrait subject captured through long-range mobile zoom. Action: smooth zoom storytelling with stable focus and premium lens feel. Camera movement: slow zoom and lateral drift. Lighting and style: PixVerse V6, cinematic telephoto look, polished ad aesthetic, realistic depth compression. Context: show pro-grade zoom and storytelling power.',
+    durationSeconds: 6,
+    approved: true,
+    forceFallback: false,
+    status: 'kept',
+  },
+  {
+    id: 'scene_5',
+    title: 'Scene 5',
+    text: 'The result is a faster path from product story to campaign-ready video, with human review still in the loop before export.',
+    prompt:
+      'Subject: vivo X300 Ultra centered with bold title card and campaign finish. Action: product rotates slightly while logo and creator message resolve on screen. Camera movement: smooth orbit and settle. Lighting and style: PixVerse V6, premium launch finale, high-contrast cinematic lighting, luxury smartphone ad. Context: final campaign-ready call to action.',
+    durationSeconds: 6,
+    approved: true,
+    forceFallback: false,
+    status: 'kept',
+  },
+];
+
+const shellTransition = { duration: 0.28, ease: [0.22, 1, 0.36, 1] as const };
+const fadeUpVariants = {
+  hidden: { opacity: 0, y: 18 },
+  show: { opacity: 1, y: 0 },
+};
+const staggerVariants = {
+  hidden: {},
+  show: {
+    transition: {
+      staggerChildren: 0.06,
+      delayChildren: 0.04,
+    },
+  },
+};
 
 function estimateSceneDuration(text: string): number {
   const words = text.trim().split(/\s+/).filter(Boolean).length;
@@ -73,7 +166,7 @@ function splitSceneText(text: string): [string, string] {
 }
 
 function normalizeSceneReviewCards(script: string, topic: string): SceneReviewCard[] {
-  let cards = parseStudioScenes(script).map((scene, index) => ({
+  let cards: SceneReviewCard[] = parseStudioScenes(script).map((scene, index) => ({
     id: `scene_${index + 1}`,
     title: scene.title || `Scene ${index + 1}`,
     text: scene.body || scene.title || '',
@@ -149,6 +242,14 @@ function normalizeSceneReviewCards(script: string, topic: string): SceneReviewCa
   }));
 }
 
+function pickDemoVoice(voices: Voice[], fallback: string): string {
+  const englishPriority =
+    voices.find((voice) => voice.id.startsWith('elevenlabs:') && voice.lang.startsWith('en')) ||
+    voices.find((voice) => voice.lang.startsWith('en') && /news|narrat|studio|professional|ava|andrew/i.test(`${voice.name} ${voice.style || ''}`)) ||
+    voices.find((voice) => voice.lang.startsWith('en'));
+  return englishPriority?.id || fallback;
+}
+
 export function ResearchVideoView({ targetLang, setTargetLang, onOpenBrandLayout }: ResearchVideoViewProps) {
   const { t } = useI18n();
   const [topic, setTopic] = useState('');
@@ -156,6 +257,7 @@ export function ResearchVideoView({ targetLang, setTargetLang, onOpenBrandLayout
   const [wizardStep, setWizardStep] = useState<WizardStep>(1);
   const [sceneReviewCards, setSceneReviewCards] = useState<SceneReviewCard[]>([]);
   const [sceneClipFiles, setSceneClipFiles] = useState<Record<string, File | null>>({});
+  const [usePixverseClipFolder, setUsePixverseClipFolder] = useState(false);
   const [sources, setSources] = useState<ResearchSource[]>([]);
   const [summary, setSummary] = useState('');
   const [confidence, setConfidence] = useState('');
@@ -248,12 +350,25 @@ export function ResearchVideoView({ targetLang, setTargetLang, onOpenBrandLayout
   };
 
   const handleHackathonDemo = () => {
-    const demoTopic = 'The Future of AI Phones 2026';
-    setTopic(demoTopic);
-    // Use a small timeout to ensure state is updated before research starts
-    setTimeout(() => {
-      void handleResearchByTopic(demoTopic);
-    }, 100);
+    setTargetLang('en');
+    setTopic(HACKATHON_DEMO_TOPIC);
+    setScript(HACKATHON_DEMO_SCRIPT);
+    setSelectedVoice(pickDemoVoice(voiceList, selectedVoice));
+    setAspectRatio('9:16');
+    setUsePixverseClipFolder(true);
+    setSources([]);
+    setSummary(
+      'Creator-first flagship marketing demo with a PixVerse shot plan, English narration, and a 30-second campaign-ready export path.'
+    );
+    setConfidence('high');
+    setWikiThumbnailUrl('');
+    setVerificationIssues([]);
+    setTargetDuration(45);
+    setManualDuration(null);
+    setSceneReviewCards(HACKATHON_DEMO_SCENES);
+    setSceneClipFiles({});
+    setWizardStep(3);
+    setError(null);
   };
 
   const loadDemoScenario = (key: DemoScenarioKey) => {
@@ -329,34 +444,6 @@ export function ResearchVideoView({ targetLang, setTargetLang, onOpenBrandLayout
     setError(null);
   };
 
-  const handleResearchByTopic = async (specificTopic: string) => {
-    setIsResearching(true);
-    setError(null);
-    setResearchPhase('wikipedia');
-    setResearchStatus(t.researchVideo.phaseWikipedia);
-    setVerificationIssues([]);
-    try {
-      const result = await streamResearchTopic(specificTopic, targetLang, onResearchEvent);
-      setScript(result.script || '');
-      setSources(result.sources || []);
-      setSummary(result.research_summary || '');
-      setConfidence(result.confidence || 'medium');
-      setWikiThumbnailUrl(result.wiki_thumbnail_url || '');
-      setVerificationIssues(result.verification_issues || []);
-      const suggested =
-        result.suggested_duration_seconds || result.target_duration_seconds || DEFAULT_TARGET_DURATION;
-      setTargetDuration(Math.min(60, Math.max(30, suggested)));
-      setSceneReviewCards([]);
-      setWizardStep(2);
-    } catch (err) {
-      setError(extractApiErrorMessage(err, t.researchVideo.researchFailed));
-    } finally {
-      setIsResearching(false);
-      setResearchPhase('');
-      setResearchStatus('');
-    }
-  };
-
   const handlePreviewVoice = async () => {
     if (isPreviewPlaying) {
       audioRef.current?.pause();
@@ -400,7 +487,7 @@ export function ResearchVideoView({ targetLang, setTargetLang, onOpenBrandLayout
       return;
     }
     const selectedClips = sceneReviewCards.filter((scene) => Boolean(sceneClipFiles[scene.id])).length;
-    if (selectedClips > 0 && selectedClips !== sceneReviewCards.length) {
+    if (!usePixverseClipFolder && selectedClips > 0 && selectedClips !== sceneReviewCards.length) {
       setError(t.researchVideo.needAllPixverseClips);
       return;
     }
@@ -427,7 +514,9 @@ export function ResearchVideoView({ targetLang, setTargetLang, onOpenBrandLayout
     formData.append('studio_visual_mode', studioVisualMode);
     formData.append('studio_template', studioBrandStore.getState().studioTemplate);
     formData.append('studio_render_engine', studioRenderEngine);
-    if (selectedClips === sceneReviewCards.length) {
+    if (usePixverseClipFolder) {
+      formData.append('pixverse_clip_dir', 'pixverse_smoke');
+    } else if (selectedClips === sceneReviewCards.length) {
       sceneReviewCards.forEach((scene) => {
         const file = sceneClipFiles[scene.id];
         if (file) formData.append('pixverse_clips', file, file.name);
@@ -543,45 +632,62 @@ export function ResearchVideoView({ targetLang, setTargetLang, onOpenBrandLayout
 
   if (jobId) {
     return (
-      <div className="space-y-6">
+      <motion.div initial="hidden" animate="show" variants={staggerVariants} className="space-y-6">
         <Button variant="ghost" className="text-slate-400" onClick={() => setJobId(null)}>
           ← {t.researchVideo.backToResearch}
         </Button>
-        <DubbingProgress jobId={jobId} />
-      </div>
+        <motion.div variants={fadeUpVariants} transition={shellTransition}>
+          <DubbingProgress jobId={jobId} />
+        </motion.div>
+      </motion.div>
     );
   }
 
   return (
-    <div className="space-y-6">
-      <div>
+    <motion.div initial="hidden" animate="show" variants={staggerVariants} className="space-y-6">
+      <motion.div variants={fadeUpVariants} transition={shellTransition}>
         <div className="flex items-center gap-3 mb-2">
           <h1 className="text-3xl font-bold bg-gradient-to-br from-amber-400 to-orange-500 text-transparent bg-clip-text">
             {t.researchVideo.title}
           </h1>
           <Badge className="bg-amber-500/20 text-amber-300 border-amber-500/40 uppercase text-[10px] tracking-wider">
-            Hackathon Edition
+            {t.researchVideo.hackathonBadge}
           </Badge>
         </div>
         <p className="text-slate-400 max-w-2xl flex items-center gap-2">
           {t.researchVideo.subtitle}
           <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded-full bg-blue-500/10 text-blue-400 text-[10px] border border-blue-500/20 font-medium">
-            <Sparkles className="w-2.5 h-2.5" /> TRAE SOLO MTC Optimized
+            <Sparkles className="w-2.5 h-2.5" /> {t.researchVideo.workflowBadge}
           </span>
         </p>
-      </div>
+      </motion.div>
 
-      {error && (
-        <div className="bg-red-500/10 border border-red-500/20 rounded-lg p-4 text-sm text-red-300">{error}</div>
-      )}
+      <AnimatePresence mode="wait">
+        {error && (
+          <motion.div
+            key={error}
+            initial={{ opacity: 0, y: -10 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0, y: -8 }}
+            transition={shellTransition}
+            className="bg-red-500/10 border border-red-500/20 rounded-lg p-4 text-sm text-red-300"
+          >
+            {error}
+          </motion.div>
+        )}
+      </AnimatePresence>
 
-      <div className="grid gap-3 md:grid-cols-4">
+      <motion.div layout className="grid gap-3 md:grid-cols-4">
         {steps.map((step) => {
           const active = wizardStep === step.id;
           const complete = wizardStep > step.id;
           return (
-            <div
+            <motion.div
+              layout
               key={step.id}
+              initial={{ opacity: 0, y: 10 }}
+              animate={{ opacity: 1, y: 0, scale: active ? 1.01 : 1 }}
+              transition={{ ...shellTransition, delay: step.id * 0.03 }}
               className={`rounded-xl border px-4 py-3 text-sm ${
                 active
                   ? 'border-cyan-400/50 bg-cyan-500/10 text-cyan-100'
@@ -595,14 +701,14 @@ export function ResearchVideoView({ targetLang, setTargetLang, onOpenBrandLayout
                 {complete ? <CheckCircle2 className="h-4 w-4" /> : <Wand2 className="h-4 w-4" />}
                 <span className="font-semibold">{step.label}</span>
               </div>
-            </div>
+            </motion.div>
           );
         })}
-      </div>
+      </motion.div>
 
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 items-start">
-        <div className="space-y-4">
-          <div className="rounded-2xl border border-amber-500/20 bg-slate-900/80 p-5 space-y-4">
+        <motion.div layout className="space-y-4">
+          <motion.div layout variants={fadeUpVariants} transition={shellTransition} className="rounded-2xl border border-amber-500/20 bg-slate-900/80 p-5 space-y-4">
             <div className="flex items-center justify-between gap-3">
               <Label className="text-sm font-semibold flex items-center gap-2">
                 <Search className="w-4 h-4 text-amber-400" />
@@ -667,25 +773,45 @@ export function ResearchVideoView({ targetLang, setTargetLang, onOpenBrandLayout
               onClick={() => void handleResearch()}
             >
               {isResearching ? (
-                <span className="inline-flex items-center gap-2">
+                <motion.span
+                  initial={{ opacity: 0.7 }}
+                  animate={{ opacity: 1 }}
+                  transition={{ duration: 0.8, repeat: Infinity, repeatType: 'reverse' }}
+                  className="inline-flex items-center gap-2"
+                >
                   <Loader2 className="w-4 h-4 animate-spin" />
                   {phaseLabel(researchPhase)}
-                </span>
+                </motion.span>
               ) : (
                 t.researchVideo.researchBtn
               )}
             </Button>
-            {isResearching && researchStatus && (
-              <div className="rounded-lg border border-amber-500/30 bg-amber-500/10 px-3 py-2 text-xs text-amber-100">
-                <p className="font-semibold uppercase tracking-wide text-amber-300/90">{phaseLabel(researchPhase)}</p>
-                <p className="mt-1 text-slate-200">{researchStatus}</p>
-              </div>
-            )}
+            <AnimatePresence>
+              {isResearching && researchStatus && (
+                <motion.div
+                  initial={{ opacity: 0, height: 0 }}
+                  animate={{ opacity: 1, height: 'auto' }}
+                  exit={{ opacity: 0, height: 0 }}
+                  transition={shellTransition}
+                  className="overflow-hidden rounded-lg border border-amber-500/30 bg-amber-500/10 px-3 py-2 text-xs text-amber-100"
+                >
+                  <p className="font-semibold uppercase tracking-wide text-amber-300/90">{phaseLabel(researchPhase)}</p>
+                  <p className="mt-1 text-slate-200">{researchStatus}</p>
+                </motion.div>
+              )}
+            </AnimatePresence>
             <p className="text-[11px] text-slate-500">{t.researchVideo.researchHint}</p>
-          </div>
+          </motion.div>
 
-          {summary && (
-            <div className="rounded-xl border border-white/10 bg-black/30 p-4 space-y-2">
+          <AnimatePresence>
+            {summary && (
+            <motion.div
+              initial={{ opacity: 0, y: 10 }}
+              animate={{ opacity: 1, y: 0 }}
+              exit={{ opacity: 0, y: -8 }}
+              transition={shellTransition}
+              className="rounded-xl border border-white/10 bg-black/30 p-4 space-y-2"
+            >
               <p className={`text-xs font-semibold uppercase ${confidenceColor}`}>
                 {t.researchVideo.confidence}: {confidence}
               </p>
@@ -703,14 +829,28 @@ export function ResearchVideoView({ targetLang, setTargetLang, onOpenBrandLayout
                   ))}
                 </ul>
               )}
-            </div>
+            </motion.div>
           )}
+          </AnimatePresence>
 
+          <AnimatePresence>
           {sources.length > 0 && (
-            <div className="rounded-xl border border-white/10 bg-black/20 p-4 space-y-2 max-h-[220px] overflow-y-auto">
+            <motion.div
+              initial={{ opacity: 0, y: 12 }}
+              animate={{ opacity: 1, y: 0 }}
+              exit={{ opacity: 0, y: -8 }}
+              transition={shellTransition}
+              className="rounded-xl border border-white/10 bg-black/20 p-4 space-y-2 max-h-[220px] overflow-y-auto"
+            >
               <p className="text-xs font-bold uppercase text-slate-500">{t.researchVideo.sourcesTitle}</p>
               {sources.map((s, i) => (
-                <div key={`${s.title}-${i}`} className="text-xs border-b border-white/5 pb-2 last:border-0">
+                <motion.div
+                  key={`${s.title}-${i}`}
+                  initial={{ opacity: 0, x: -8 }}
+                  animate={{ opacity: 1, x: 0 }}
+                  transition={{ ...shellTransition, delay: i * 0.03 }}
+                  className="text-xs border-b border-white/5 pb-2 last:border-0"
+                >
                   <p className="font-medium text-slate-200">{s.title}</p>
                   {s.snippet && <p className="text-slate-500 mt-0.5">{s.snippet}</p>}
                   {s.url && (
@@ -724,12 +864,13 @@ export function ResearchVideoView({ targetLang, setTargetLang, onOpenBrandLayout
                       {t.researchVideo.openSource}
                     </a>
                   )}
-                </div>
+                </motion.div>
               ))}
-            </div>
+            </motion.div>
           )}
+          </AnimatePresence>
 
-          <div className="rounded-2xl border border-white/10 bg-slate-900/80 p-5 space-y-3">
+          <motion.div layout variants={fadeUpVariants} transition={shellTransition} className="rounded-2xl border border-white/10 bg-slate-900/80 p-5 space-y-3">
             <Label className="text-sm font-semibold flex items-center gap-2">
               <Sparkles className="w-4 h-4 text-purple-400" />
               {t.researchVideo.scriptLabel}
@@ -768,10 +909,18 @@ export function ResearchVideoView({ targetLang, setTargetLang, onOpenBrandLayout
               )}
             </div>
             <p className="text-[11px] text-slate-500">{t.researchVideo.scriptApproveHint}</p>
-          </div>
+          </motion.div>
 
+          <AnimatePresence>
           {wizardStep >= 3 && sceneReviewCards.length > 0 && (
-            <div className="rounded-2xl border border-cyan-500/20 bg-slate-900/80 p-5 space-y-3">
+            <motion.div
+              layout
+              initial={{ opacity: 0, y: 16 }}
+              animate={{ opacity: 1, y: 0 }}
+              exit={{ opacity: 0, y: 12 }}
+              transition={shellTransition}
+              className="rounded-2xl border border-cyan-500/20 bg-slate-900/80 p-5 space-y-3"
+            >
               <div className="flex items-center justify-between gap-3">
                 <div>
                   <p className="text-sm font-semibold text-cyan-100">{t.researchVideo.sceneReviewTitle}</p>
@@ -781,24 +930,26 @@ export function ResearchVideoView({ targetLang, setTargetLang, onOpenBrandLayout
                   {sceneReviewCards.length} {t.researchVideo.sceneCards}
                 </Badge>
               </div>
-              <div className="grid grid-cols-2 gap-3 text-xs text-slate-400">
-                <div className="rounded-lg border border-white/10 bg-black/20 p-3">
+              <motion.div layout className="grid grid-cols-2 gap-3 text-xs text-slate-400">
+                <motion.div layout className="rounded-lg border border-white/10 bg-black/20 p-3">
                   <p className="font-semibold text-slate-200">{t.researchVideo.sceneReviewReady}</p>
                   <p>{t.researchVideo.sceneReviewReadyHint}</p>
-                </div>
-                <div className="rounded-lg border border-white/10 bg-black/20 p-3">
+                </motion.div>
+                <motion.div layout className="rounded-lg border border-white/10 bg-black/20 p-3">
                   <p className="font-semibold text-slate-200">{t.researchVideo.sceneFallbackSafe}</p>
                   <p>{t.researchVideo.sceneFallbackSafeHint}</p>
-                </div>
-              </div>
+                </motion.div>
+              </motion.div>
               <Button type="button" className="w-full bg-cyan-600 hover:bg-cyan-500" onClick={handleContinueToRender}>
                 {t.researchVideo.continueToRender}
               </Button>
-            </div>
+            </motion.div>
           )}
-        </div>
+          </AnimatePresence>
+        </motion.div>
 
-        <StudioProjectPreview
+        <motion.div layout variants={fadeUpVariants} transition={{ ...shellTransition, delay: 0.08 }}>
+          <StudioProjectPreview
           script={script}
           previewDurationSeconds={previewDurationSeconds}
           previewTopic={topic.trim()}
@@ -824,11 +975,21 @@ export function ResearchVideoView({ targetLang, setTargetLang, onOpenBrandLayout
           onKeepScene={handleSceneKeep}
           onFallbackScene={handleSceneFallback}
           onSceneClipSelect={handleSceneClipSelect}
+          disableSceneClipInputs={usePixverseClipFolder}
         />
+        </motion.div>
       </div>
 
+      <AnimatePresence>
       {wizardStep >= 4 && (
-      <div className="rounded-2xl border border-white/10 bg-slate-900/80 p-5 space-y-4">
+      <motion.div
+        layout
+        initial={{ opacity: 0, y: 18 }}
+        animate={{ opacity: 1, y: 0 }}
+        exit={{ opacity: 0, y: 12 }}
+        transition={shellTransition}
+        className="rounded-2xl border border-white/10 bg-slate-900/80 p-5 space-y-4"
+      >
         <h3 className="text-sm font-bold uppercase tracking-wider text-slate-400 flex items-center gap-2">
           <Film className="w-4 h-4" />
           {t.studio.outputSettings}
@@ -856,6 +1017,26 @@ export function ResearchVideoView({ targetLang, setTargetLang, onOpenBrandLayout
           isPreviewPlaying={isPreviewPlaying}
           onPreviewVoice={handlePreviewVoice}
         />
+        <div className="rounded-xl border border-white/10 bg-black/30 p-4 space-y-2">
+          <div className="flex items-center justify-between gap-3">
+            <div>
+              <p className="text-sm font-medium text-slate-200">{t.researchVideo.pixverseFolderToggle}</p>
+              <p className="text-[11px] text-slate-500">{t.researchVideo.pixverseFolderHint}</p>
+            </div>
+            <Switch
+              checked={usePixverseClipFolder}
+              onCheckedChange={(v) => {
+                setUsePixverseClipFolder(v);
+                if (v) setSceneClipFiles({});
+              }}
+            />
+          </div>
+          <p className="text-[11px] text-slate-500">
+            {t.researchVideo.pixverseFolderPath}{' '}
+            <span className="font-mono text-slate-300">storage/input/pixverse_smoke</span>
+          </p>
+          <p className="text-[11px] text-slate-500">{t.researchVideo.pixverseFolderRules}</p>
+        </div>
         <p className="text-[11px] text-slate-500 leading-snug">{t.researchVideo.renderHint}</p>
         <Button
           className="w-full py-6 font-bold bg-gradient-to-r from-indigo-600 to-purple-600"
@@ -864,8 +1045,9 @@ export function ResearchVideoView({ targetLang, setTargetLang, onOpenBrandLayout
         >
           {isRendering ? t.researchVideo.rendering : t.researchVideo.renderBtn}
         </Button>
-      </div>
+      </motion.div>
       )}
-    </div>
+      </AnimatePresence>
+    </motion.div>
   );
 }

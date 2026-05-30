@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { motion } from 'framer-motion';
 import { AppSidebar } from './components/AppSidebar';
 import { DashboardHeader } from './components/dashboard/Header';
 import { ErrorBoundary } from './components/ErrorBoundary';
@@ -176,6 +177,9 @@ export default function App() {
     }
   };
 
+  const persistentViews = ['dashboard', 'studio', 'researchVideo', 'shorts', 'brandLayout'] as const;
+  const floatingViews = ['editor', 'projects', 'history', 'settings', 'help'] as const;
+
   return (
     <ErrorBoundary>
       <div className="flex h-screen w-full bg-slate-950 overflow-hidden text-white">
@@ -192,16 +196,45 @@ export default function App() {
           <main className="flex-1 min-w-0 overflow-y-auto p-6 md:p-8">
             <div className="max-w-7xl mx-auto h-full">
               <ErrorBoundary>
-                <div className={currentView === 'dashboard' ? '' : 'hidden'}>{renderView('dashboard')}</div>
-                <div className={currentView === 'studio' ? '' : 'hidden'}>{renderView('studio')}</div>
-                <div className={currentView === 'researchVideo' ? '' : 'hidden'}>{renderView('researchVideo')}</div>
-                <div className={currentView === 'shorts' ? '' : 'hidden'}>{renderView('shorts')}</div>
-                <div className={currentView === 'brandLayout' ? '' : 'hidden'}>{renderView('brandLayout')}</div>
-                {currentView === 'editor' && renderView('editor')}
-                {currentView === 'projects' && renderView('projects')}
-                {currentView === 'history' && renderView('history')}
-                {currentView === 'settings' && renderView('settings')}
-                {currentView === 'help' && renderView('help')}
+                <div className="relative min-h-full">
+                  {persistentViews.map((viewId) => {
+                    const active = currentView === viewId;
+                    return (
+                      <motion.div
+                        key={viewId}
+                        initial={false}
+                        animate={{
+                          opacity: active ? 1 : 0,
+                          x: active ? 0 : 24,
+                          scale: active ? 1 : 0.985,
+                          filter: active ? 'blur(0px)' : 'blur(6px)',
+                        }}
+                        transition={{ duration: 0.24, ease: [0.22, 1, 0.36, 1] }}
+                        className={
+                          active
+                            ? 'relative z-10'
+                            : 'pointer-events-none absolute inset-0 z-0 overflow-hidden'
+                        }
+                        aria-hidden={!active}
+                      >
+                        {renderView(viewId)}
+                      </motion.div>
+                    );
+                  })}
+
+                  {floatingViews.map((viewId) =>
+                    currentView === viewId ? (
+                      <motion.div
+                        key={viewId}
+                        initial={{ opacity: 0, y: 18, scale: 0.99 }}
+                        animate={{ opacity: 1, y: 0, scale: 1 }}
+                        transition={{ duration: 0.24, ease: [0.22, 1, 0.36, 1] }}
+                      >
+                        {renderView(viewId)}
+                      </motion.div>
+                    ) : null,
+                  )}
+                </div>
               </ErrorBoundary>
             </div>
           </main>

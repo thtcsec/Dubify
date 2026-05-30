@@ -1,4 +1,5 @@
 import { Eye, LayoutTemplate } from 'lucide-react';
+import { AnimatePresence, motion } from 'framer-motion';
 import { Button } from '@/components/ui/button';
 import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
@@ -48,6 +49,7 @@ interface StudioProjectPreviewProps {
   onKeepScene?: (sceneId: string) => void;
   onFallbackScene?: (sceneId: string) => void;
   onSceneClipSelect?: (sceneId: string, file: File | null) => void;
+  disableSceneClipInputs?: boolean;
 }
 
 export function StudioProjectPreview({
@@ -77,11 +79,16 @@ export function StudioProjectPreview({
   onKeepScene,
   onFallbackScene,
   onSceneClipSelect,
+  disableSceneClipInputs = false,
 }: StudioProjectPreviewProps) {
   const { t } = useI18n();
 
   return (
-    <div
+    <motion.div
+      layout
+      initial={{ opacity: 0, x: 14 }}
+      animate={{ opacity: 1, x: 0 }}
+      transition={{ duration: 0.28, ease: [0.22, 1, 0.36, 1] }}
       className={`relative rounded-2xl border border-white/10 bg-slate-900/80 backdrop-blur-xl p-4 shadow-2xl space-y-3 ${
         sticky ? 'lg:sticky lg:top-4' : ''
       }`}
@@ -101,9 +108,9 @@ export function StudioProjectPreview({
         )}
       </div>
       <p className="text-[11px] text-slate-500 leading-snug">{t.studio.projectPreviewHint}</p>
-      <div className={sticky ? 'max-h-[min(70vh,640px)] overflow-y-auto pr-1' : ''}>
+      <motion.div layout className={sticky ? 'max-h-[min(70vh,640px)] overflow-y-auto pr-1' : ''}>
         {script.trim() ? (
-          <div className="space-y-4">
+          <motion.div layout className="space-y-4">
             <StudioLayoutPreview
               script={script}
               imagePreview=""
@@ -126,8 +133,16 @@ export function StudioProjectPreview({
               socialAvatarUrl={socialAvatarUrl}
             />
 
+            <AnimatePresence>
             {sceneReviewCards.length > 0 && (
-              <div className="rounded-xl border border-cyan-500/20 bg-black/20 p-4 space-y-3">
+              <motion.div
+                layout
+                initial={{ opacity: 0, y: 12 }}
+                animate={{ opacity: 1, y: 0 }}
+                exit={{ opacity: 0, y: 8 }}
+                transition={{ duration: 0.28, ease: [0.22, 1, 0.36, 1] }}
+                className="rounded-xl border border-cyan-500/20 bg-black/20 p-4 space-y-3"
+              >
                 <div className="flex items-center justify-between gap-2">
                   <div>
                     <p className="text-sm font-semibold text-cyan-100">{t.researchVideo.sceneReviewTitle}</p>
@@ -137,9 +152,17 @@ export function StudioProjectPreview({
                     {sceneReviewCards.length} {t.researchVideo.sceneCards}
                   </Badge>
                 </div>
-                <div className="space-y-3">
+                <motion.div layout className="space-y-3">
                   {sceneReviewCards.map((scene, index) => (
-                    <div key={scene.id} className="rounded-xl border border-white/10 bg-slate-950/70 p-4 space-y-3">
+                    <motion.div
+                      layout
+                      key={scene.id}
+                      initial={{ opacity: 0, y: 14 }}
+                      animate={{ opacity: 1, y: 0 }}
+                      transition={{ duration: 0.24, delay: index * 0.04, ease: [0.22, 1, 0.36, 1] }}
+                      whileHover={{ y: -2 }}
+                      className="rounded-xl border border-white/10 bg-slate-950/70 p-4 space-y-3"
+                    >
                       <div className="flex items-start justify-between gap-3">
                         <div>
                           <p className="text-xs uppercase tracking-[0.2em] text-slate-500">
@@ -176,6 +199,7 @@ export function StudioProjectPreview({
                           <input
                             type="file"
                             accept="video/mp4,video/webm"
+                            disabled={disableSceneClipInputs}
                             className="block text-[11px] text-slate-300 file:mr-3 file:rounded-md file:border-0 file:bg-white/10 file:px-3 file:py-1.5 file:text-[11px] file:font-semibold file:text-slate-100 hover:file:bg-white/15"
                             onChange={(event) => {
                               const file = event.target.files?.[0] ?? null;
@@ -189,6 +213,9 @@ export function StudioProjectPreview({
                           )}
                         </div>
                         <p className="text-[11px] text-slate-500">{t.researchVideo.pixverseClipHint}</p>
+                        {disableSceneClipInputs && (
+                          <p className="text-[11px] text-amber-300">{t.researchVideo.pixverseClipDisabledHint}</p>
+                        )}
                       </div>
                       <div className="flex flex-wrap gap-2">
                         <Button type="button" size="sm" variant="outline" onClick={() => onRegenerateScene?.(scene.id)}>
@@ -205,18 +232,23 @@ export function StudioProjectPreview({
                           {t.common.seconds}
                         </span>
                       </div>
-                    </div>
+                    </motion.div>
                   ))}
-                </div>
-              </div>
+                </motion.div>
+              </motion.div>
             )}
-          </div>
+            </AnimatePresence>
+          </motion.div>
         ) : (
-          <p className="text-xs text-slate-500 text-center py-16 border border-dashed border-white/10 rounded-xl">
+          <motion.p
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            className="text-xs text-slate-500 text-center py-16 border border-dashed border-white/10 rounded-xl"
+          >
             {t.studio.projectPreviewEmpty}
-          </p>
+          </motion.p>
         )}
-      </div>
-    </div>
+      </motion.div>
+    </motion.div>
   );
 }
