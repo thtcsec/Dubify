@@ -1,6 +1,6 @@
 # AI Research Video (Beta) — product sketch
 
-**Status:** Planned / not implemented. Tag **Beta** in UI when shipped.
+**Status:** Beta v0 shipped — topic → LLM (+ optional Wikipedia) → editable script + sources → Studio render. Tag **Beta** in sidebar.
 
 ## Vision
 

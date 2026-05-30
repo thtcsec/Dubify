@@ -1,149 +1,195 @@
-# 🎬 Dubify - Professional AI Video Localization
+# Dubify — AI Video Localization & Studio
 
-Dubify is a state-of-the-art AI video translation and dubbing platform. It transforms single-language videos into localized versions with perfect timing, using advanced ASR, NMT, and TTS models.
+Dubify dubs long-form video, turns scripts into narrated short-form videos (TikTok/Reels style), and can auto-cut dubbed shorts. Built with **FastAPI**, **React**, **FFmpeg**, **faster-whisper**, and optional **Playwright / HyperFrames** for HTML scene rendering.
 
-## 🚀 Quick Start (Automated)
+## Quick start
 
-If you are on Windows, you can start both the backend and frontend with a single command:
+**Windows (one command):**
 
-- **CMD**: Double-click `run_dev.bat`
-- **PowerShell**: Run `./run_dev.ps1`
+- CMD: `run_dev.bat`
+- PowerShell: `./run_dev.ps1`
 
----
+**Manual:**
 
-## 🏗️ Manual Execution (Developer Mode)
-
-To run the project manually, start both the backend and frontend services.
-
-#### **Backend (FastAPI)**
 ```bash
-cd backend
-# Create virtual environment (Optional but Recommended)
-python -m venv venv
-source venv/bin/activate  # Windows: venv\Scripts\activate
-
-# Install dependencies
-pip install -r requirements.txt
-
-# Start the server
+# Backend
+cd backend && pip install -r requirements.txt
 uvicorn app.main:app --reload
-```
-*API will be available at `http://localhost:8000`*
 
-#### **Frontend (React + Vite)**
-```bash
-cd frontend
-# Install dependencies
-pnpm install
-
-# Start the development server
-pnpm dev
+# Frontend
+cd frontend && pnpm install && pnpm dev
 ```
-*UI will be available at `http://localhost:5173`*
+
+- UI: http://localhost:5173  
+- API: http://localhost:8000  
+
+**Docker:** `docker compose up --build -d`
 
 ---
 
-### 2. Docker Execution (One-Click Setup)
+## How it works
 
-The easiest way to deploy Dubify is via Docker Compose. This starts both services and manages environment variables and persistence automatically.
+### Product flows
 
-```bash
-# Build and start services
-docker compose up --build -d
+| Flow | Input | Pipeline | Output |
+|------|--------|----------|--------|
+| **Dub Video** | File or URL | ASR → translate → TTS → mux | Dubbed MP4 + subtitles |
+| **Script → Video** | Script + brand layout | Scene split → TTS → HTML render → burn subs | Vertical/landscape MP4 |
+| **AI Research Video** (Beta) | Topic | LLM research brief → script → same as Studio | Explainer MP4 |
+| **Auto Shorts** | Long video | Full dub → segment → 9:16 clips | Part 1, 2, … |
+| **Studio Editor** | Completed job | Cue edit → optional re-burn | Updated SRT/MP4 |
 
-# Check logs
-docker compose logs -f
+### Dubbing pipeline (Dashboard)
+
+```mermaid
+flowchart LR
+  subgraph input [Input]
+    V[Video file or URL]
+  end
+  subgraph core [Worker]
+    A[Extract audio]
+    W[Whisper ASR]
+    T[Translate NLLB / cloud]
+    S[TTS Edge / local]
+    M[Mux + burn subtitles]
+  end
+  subgraph out [Output]
+    O[storage/output]
+  end
+  V --> A --> W --> T --> S --> M --> O
 ```
-*Frontend: `http://localhost`, Backend API: `http://localhost:8000`*
+
+### Script → Video (Studio)
+
+```mermaid
+flowchart TB
+  S[Script with scene headers]
+  B[Brand store: header/footer/popups/layout]
+  P[StudioLayoutPreview in UI]
+  R[rewrite optional]
+  TTS[TTS per scene]
+  HTML[HTML templates tiktok_news / pill]
+  HF[Playwright or HyperFrames]
+  FF[FFmpeg concat + ASS karaoke]
+  MP4[Final MP4]
+  S --> B
+  B --> P
+  S --> R --> TTS
+  TTS --> HTML --> HF --> FF --> MP4
+```
+
+Scene markers use lines like `[Hook]` / `[Phần chính]`. Popups use `[STAT: …]` and `[DEF: …]` in the script.
+
+### AI Research Video (Beta)
+
+```mermaid
+sequenceDiagram
+  participant U as User
+  participant API as FastAPI
+  participant LLM as LLM + Wikipedia
+  participant ST as Studio worker
+  U->>API: POST /research-video/research
+  API->>LLM: Topic → JSON script + sources
+  LLM-->>U: Editable script + confidence
+  U->>API: POST /studio
+  API->>ST: Render like Script → Video
+  ST-->>U: Job progress → MP4
+```
+
+See [docs/AI_RESEARCH_VIDEO_BETA.md](docs/AI_RESEARCH_VIDEO_BETA.md) for roadmap (stock images, PDF upload, etc.).
+
+### Processing profiles (Settings)
+
+- **Hybrid** — local ASR/translation, online TTS when allowed  
+- **Fully local** — offline-only stack  
+- **Cloud** — cloud LLM/translation when API keys are set  
 
 ---
 
-## 🏗️ Project Architecture
+## Architecture
 
-- **Backend**: FastAPI modular architecture.
-  - `VideoService`: FFmpeg audio/video processing.
-  - `ASRService`: faster-whisper transcription.
-  - `TranslateService`: NLLB-200 / Google / Ollama integration.
-  - `TTSService`: Edge-TTS with time-stretching.
-- **Frontend**: React 18, TailwindCSS, Shadcn/ui (Migrated from LingFilm).
-- **Core Orchestrator**: `DubbingPipeline` for end-to-end async processing.
-
-## 📂 Directory Structure
-- `backend/`: FastAPI source code and logic.
-- `frontend/`: React source code and UI.
-- `storage/`: Input/Output and temporary processing files.
-- `models/`: Weights for local AI models (Whisper, NLLB).
-- `scripts/`: Legacy autodub and reference logic.
-
-## 🎙️ Script → Video
-
-| Luồng | Nhập kịch bản | Output |
-|-------|----------------|--------|
-| **Studio** | Dán kịch bản + ảnh nền; bật **Dùng nguyên kịch bản** (mặc định) | TTS + phụ đề theo câu + video; BGM tự mix nếu có file trong `storage/bgm/` |
-| **Short tự động** | URL / upload video dài | Tải → phiên âm → dub → cắt Part 1, 2… (9:16) |
-| **Dashboard** | Video/URL | Lồng tiếng + phụ đề |
-
-```bash
-pip install -r backend/requirements.txt   # gồm vietnormalizer + playwright
-python -m playwright install chromium   # Studio Script→Video (render HTML kiểu Pixelle-Video)
-# GPU (RTX): cài PyTorch CUDA — pip install torch torchaudio --index-url https://download.pytorch.org/whl/cu124
-# .env: USE_GPU=true, WHISPER_DEVICE=auto, VIDEO_ENCODER=auto (NVENC encode khi có)
-# Tùy chọn: thả file .mp3 vào storage/bgm/ để có nhạc nền (học từ Pixelle-Video)
+```mermaid
+flowchart TB
+  subgraph fe [Frontend React]
+    UI[Views: Dashboard Studio Research Shorts Editor]
+    BR[studioBrandStore + layout preview]
+  end
+  subgraph be [Backend FastAPI]
+    API[REST + SSE job events]
+    JM[JobManager JSON persistence]
+    WK[Background worker]
+  end
+  subgraph store [Storage]
+    IN[input]
+    OUT[output]
+    TMP[temp]
+    ART[artifacts]
+  end
+  UI --> API
+  BR --> UI
+  API --> JM
+  API --> WK
+  WK --> store
 ```
 
-**Studio Script → Video (Pixelle/TikTok-style):** template `tiktok_news` (Playwright HTML + phụ đề highlight từng từ). Chia cảnh bằng marker `[Tiêu đề cảnh]`:
+**Key backend modules**
+
+- `VideoService` — FFmpeg, mux, clips, 9:16 crop  
+- `ASRService` — faster-whisper  
+- `TranslateService` — NLLB / cloud  
+- `TTSService` — Edge-TTS (async API) + local fallbacks  
+- `studio_html_service` / `hyperframes_render` — scene HTML → video  
+- `research_video_service` — Beta topic → script  
+
+---
+
+## Studio setup notes
+
+```bash
+pip install -r backend/requirements.txt
+python -m playwright install chromium   # HTML scene render
+# Optional: Node 22+ for HyperFrames — see docs/HYPERFRAMES.md
+```
+
+Optional BGM: drop `.mp3` files in `storage/bgm/`.
+
+**Script example:**
 
 ```text
-[Mở đầu]
-Đoạn thoại cảnh 1...
+[Hook]
+Tin nóng hôm nay.
+[STAT: 47% — tăng trưởng YoY]
 
-[Phần chính]
-Đoạn thoại cảnh 2...
+[Insight]
+[DEF: Gemini — AI điều khiển thao tác trên điện thoại]
+Theo dõi kênh để cập nhật thêm.
 ```
 
-## 📚 References & Acknowledgments
+---
 
-| Project | Link | Đã tích hợp trong Dubify |
-|---------|------|-------------------------|
-| **[HyperFrames](https://github.com/heygen-com/hyperframes)** | [heygen-com/hyperframes](https://github.com/heygen-com/hyperframes) | Studio pill template, social overlays, optional HF render — [docs/HYPERFRAMES.md](docs/HYPERFRAMES.md) |
-| **[OmniVoice Studio](https://github.com/debpalash/OmniVoice-Studio)** | [debpalash/OmniVoice-Studio](https://github.com/debpalash/OmniVoice-Studio) | So sánh với VibeVoice — [docs/OMNIVOICE_VS_VIBEVOICE.md](docs/OMNIVOICE_VS_VIBEVOICE.md) |
-| **[Pixelle-Video](https://github.com/AIDC-AI/Pixelle-Video)** | [AIDC-AI/Pixelle-Video](https://github.com/AIDC-AI/Pixelle-Video) | HTML scene cards, Playwright render, `script_split.py`, BGM `storage/bgm/`, chia cảnh `[Section]` |
-| **[OpenReel](https://github.com/Augani/openreel-video)** | [Augani/openreel-video](https://github.com/Augani/openreel-video) | Studio Editor: timeline, transport, cue inspector |
-| **[vietnormalizer](https://github.com/nghimestudio/vietnormalizer)** | [nghimestudio/vietnormalizer](https://github.com/nghimestudio/vietnormalizer) | `text_normalizer.py` trước TTS tiếng Việt |
-| **[edge-tts](https://github.com/rany2/edge-tts)** | [rany2/edge-tts](https://github.com/rany2/edge-tts) | Hybrid/online TTS + voice catalog |
-| **[faster-whisper](https://github.com/SYSTRAN/faster-whisper)** | [SYSTRAN/faster-whisper](https://github.com/SYSTRAN/faster-whisper) | Local ASR (CUDA) cho dubbing |
-| **[Playwright](https://github.com/microsoft/playwright)** | [microsoft/playwright](https://github.com/microsoft/playwright) | Chụp HTML scene 1080×1920 / 1920×1080 |
-| **[FFmpeg](https://ffmpeg.org/)** | [ffmpeg.org](https://ffmpeg.org/) | xfade chuyển cảnh, burn ASS, NVENC, clip 9:16 |
-| **[libass](https://github.com/libass/libass)** | [libass/libass](https://github.com/libass/libass) | Karaoke/highlight phụ đề Studio (ASS) |
-| **[PySceneDetect](https://github.com/Breakthrough/PySceneDetect)** | [Breakthrough/PySceneDetect](https://github.com/Breakthrough/PySceneDetect) | Roadmap: cắt clip theo shot |
-| **[pyvideotrans](https://github.com/jianchang512/pyvideotrans)** | [jianchang512/pyvideotrans](https://github.com/jianchang512/pyvideotrans) | Tham khảo pipeline dub (GPL — không copy code) |
-| **[VibeVoice](https://github.com/microsoft/VibeVoice)** | [microsoft/VibeVoice](https://github.com/microsoft/VibeVoice) | Roadmap: ASR dài + diarization |
-| **[Demucs](https://github.com/facebookresearch/demucs)** | [facebookresearch/demucs](https://github.com/facebookresearch/demucs) | Tách BGM/vocal (tùy chọn `ENABLE_BGM_RETENTION`) |
+## Docs & credits
 
-## 🤝 Maintainer
-**Trinh Hoang Tu (thtcsec)**
-© 2026 Dubify AI
+| Doc | Topic |
+|-----|--------|
+| [docs/HYPERFRAMES.md](docs/HYPERFRAMES.md) | HyperFrames render path |
+| [docs/INSPIRED_REPOS.md](docs/INSPIRED_REPOS.md) | Borrowed patterns |
+| [docs/AI_RESEARCH_VIDEO_BETA.md](docs/AI_RESEARCH_VIDEO_BETA.md) | Research Video beta |
 
-## 🔐 Douyin/TikTok Cookie Setup (Important)
+Inspired by HyperFrames, Pixelle-Video, OpenReel, faster-whisper, edge-tts, FFmpeg, and others — see INSPIRED_REPOS.
 
-Some Douyin/TikTok videos require fresh browser cookies. If you see errors like `Fresh cookies are needed`, add these values in `.env` at project root:
+---
+
+## Maintainer
+
+**Trinh Hoang Tu (thtcsec)** — © 2026 Dubify AI
+
+### Douyin / TikTok cookies
+
+If downloads fail with cookie errors, set in `.env`:
 
 ```bash
 YTDLP_COOKIES_FROM_BROWSERS=chrome,edge,firefox
-# optional: exported Netscape cookies file path
 YTDLP_COOKIE_FILE=
-# optional: proxy if your network is restricted
 YTDLP_PROXY=
-YTDLP_SOCKET_TIMEOUT=20
-
-# optional: self-hosted external parser API base (for hard anti-bot cases)
-# example: https://your-douyin-parser.example.com
 DOUYIN_FALLBACK_API_BASE=
-# optional: API key for external parser (if provider requires auth)
-DOUYIN_FALLBACK_API_KEY=
 ```
-
-Tips:
-- Open the target video in your browser first, then retry quickly in Dubify.
-- Keep your browser signed in if the source platform requires account/session checks.
-- For highest stability, deploy your own parser API and set `DOUYIN_FALLBACK_API_BASE`.

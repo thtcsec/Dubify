@@ -156,6 +156,7 @@ yarn-error.log*
 third_party/
 cookies.txt
 cookies.json
+logs/
 storage/input/*
 storage/temp/*
 storage/output/*
@@ -196,3 +197,17 @@ node_modules/
 # Local test/media artifacts
 backend/test_*.mp3
 backend/test_*.wav
+backend/*.mp3
+backend/*.wav
+backend/*.vtt
+backend/*.png
+backend/*.html
+backend/temp/
+frontend/dist/
+frontend/.vite/
+playwright-report/
+test-results/
+coverage/
+.ruff_cache/
+.eslintcache
+.turbo/
