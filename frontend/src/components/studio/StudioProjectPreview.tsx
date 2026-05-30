@@ -14,6 +14,7 @@ export interface SceneReviewCard {
   title: string;
   text: string;
   prompt: string;
+  clipName?: string;
   durationSeconds: number;
   approved: boolean;
   forceFallback: boolean;
@@ -46,6 +47,7 @@ interface StudioProjectPreviewProps {
   onRegenerateScene?: (sceneId: string) => void;
   onKeepScene?: (sceneId: string) => void;
   onFallbackScene?: (sceneId: string) => void;
+  onSceneClipSelect?: (sceneId: string, file: File | null) => void;
 }
 
 export function StudioProjectPreview({
@@ -74,6 +76,7 @@ export function StudioProjectPreview({
   onRegenerateScene,
   onKeepScene,
   onFallbackScene,
+  onSceneClipSelect,
 }: StudioProjectPreviewProps) {
   const { t } = useI18n();
 
@@ -164,6 +167,28 @@ export function StudioProjectPreview({
                           onChange={(event) => onScenePromptChange?.(scene.id, event.target.value)}
                           className="min-h-[110px] bg-black/40 border-white/10 text-xs leading-relaxed"
                         />
+                      </div>
+                      <div className="space-y-2">
+                        <Label className="text-[11px] uppercase tracking-[0.18em] text-slate-500">
+                          {t.researchVideo.pixverseClipLabel}
+                        </Label>
+                        <div className="flex flex-wrap items-center gap-3">
+                          <input
+                            type="file"
+                            accept="video/mp4,video/webm"
+                            className="block text-[11px] text-slate-300 file:mr-3 file:rounded-md file:border-0 file:bg-white/10 file:px-3 file:py-1.5 file:text-[11px] file:font-semibold file:text-slate-100 hover:file:bg-white/15"
+                            onChange={(event) => {
+                              const file = event.target.files?.[0] ?? null;
+                              onSceneClipSelect?.(scene.id, file);
+                            }}
+                          />
+                          {scene.clipName && (
+                            <span className="text-[11px] text-slate-400">
+                              {t.researchVideo.clipAttached}: {scene.clipName}
+                            </span>
+                          )}
+                        </div>
+                        <p className="text-[11px] text-slate-500">{t.researchVideo.pixverseClipHint}</p>
                       </div>
                       <div className="flex flex-wrap gap-2">
                         <Button type="button" size="sm" variant="outline" onClick={() => onRegenerateScene?.(scene.id)}>

@@ -35,6 +35,7 @@ interface ResearchVideoViewProps {
 
 const DEFAULT_TARGET_DURATION = 45;
 type WizardStep = 1 | 2 | 3 | 4;
+type DemoScenarioKey = 'marketing' | 'gaming' | 'film';
 
 function estimateSceneDuration(text: string): number {
   const words = text.trim().split(/\s+/).filter(Boolean).length;
@@ -154,6 +155,7 @@ export function ResearchVideoView({ targetLang, setTargetLang, onOpenBrandLayout
   const [script, setScript] = useState('');
   const [wizardStep, setWizardStep] = useState<WizardStep>(1);
   const [sceneReviewCards, setSceneReviewCards] = useState<SceneReviewCard[]>([]);
+  const [sceneClipFiles, setSceneClipFiles] = useState<Record<string, File | null>>({});
   const [sources, setSources] = useState<ResearchSource[]>([]);
   const [summary, setSummary] = useState('');
   const [confidence, setConfidence] = useState('');
@@ -234,6 +236,7 @@ export function ResearchVideoView({ targetLang, setTargetLang, onOpenBrandLayout
       const suggested = result.suggested_duration_seconds || result.target_duration_seconds || DEFAULT_TARGET_DURATION;
       setTargetDuration(Math.min(60, Math.max(30, suggested)));
       setSceneReviewCards([]);
+      setSceneClipFiles({});
       setWizardStep(2);
     } catch (err) {
       setError(extractApiErrorMessage(err, t.researchVideo.researchFailed));
@@ -251,6 +254,79 @@ export function ResearchVideoView({ targetLang, setTargetLang, onOpenBrandLayout
     setTimeout(() => {
       void handleResearchByTopic(demoTopic);
     }, 100);
+  };
+
+  const loadDemoScenario = (key: DemoScenarioKey) => {
+    const scenarios: Record<DemoScenarioKey, { topic: string; script: string }> = {
+      marketing: {
+        topic: 'AI Phone 2026 Launch — preorder campaign',
+        script:
+          'Cảnh 1:\n' +
+          'Đây là chiếc AI Phone 2026 — điện thoại biết dự đoán bạn cần gì trước khi bạn chạm.\n' +
+          '[STAT: 3 giây — Thời gian để AI Phone dựng kế hoạch ngày mới]\n\n' +
+          'Cảnh 2:\n' +
+          'Từ camera đến lịch, mọi app trở thành một trải nghiệm liền mạch.\n' +
+          '[DEF: AI Phone — Smartphone có agent chạy xuyên suốt hệ điều hành]\n\n' +
+          'Cảnh 3:\n' +
+          'Bạn chọn: “Đi công tác 2 ngày”. Máy tự đặt lịch, sắp vali, tối ưu pin và mạng.\n' +
+          '[STAT: 30% — Mức tiết kiệm thời gian mỗi ngày]\n\n' +
+          'Cảnh 4:\n' +
+          'Và quan trọng nhất: quyền riêng tư. Mọi xử lý nhạy cảm chạy on-device.\n' +
+          '[STAT: 0 — Dữ liệu cá nhân rời khỏi máy]\n\n' +
+          'Cảnh 5:\n' +
+          'CTA: Đặt trước hôm nay — nhận gói “AI Concierge” 12 tháng.\n',
+      },
+      gaming: {
+        topic: 'Gaming — character reveal trailer',
+        script:
+          'Cảnh 1:\n' +
+          'Thành phố Neon 2096. Một nhân vật xuất hiện: “Cipher”.\n' +
+          '[STAT: 8 giây — Thời gian để hacker phá một cánh cổng an ninh]\n\n' +
+          'Cảnh 2:\n' +
+          'Cipher lao qua hành lang ánh đèn, camera orbit, mưa và phản xạ neon.\n' +
+          '[DEF: Cipher Mode — Kỹ năng làm chậm thời gian 0.5x]\n\n' +
+          'Cảnh 3:\n' +
+          'Boss reveal: drone khổng lồ, tia laser quét ngang, rung màn.\n' +
+          '[STAT: 1% — Cơ hội sống sót nếu đứng yên]\n\n' +
+          'Cảnh 4:\n' +
+          'Twist: Cipher không chạy trốn — Cipher hack chính ánh sáng.\n' +
+          '[STAT: 60 FPS — Nhịp combat]\n\n' +
+          'Cảnh 5:\n' +
+          'CTA: Vote phong cách trailer bạn muốn: “Noir” hay “Neon Pop”.\n',
+      },
+      film: {
+        topic: 'Film — pitch teaser with scene breakdown',
+        script:
+          'Cảnh 1:\n' +
+          'Mở đầu: một căn phòng trắng, đồng hồ chạy ngược.\n' +
+          '[DEF: Reverse Clock — Đồng hồ đếm ngược ký ức]\n\n' +
+          'Cảnh 2:\n' +
+          'Nhân vật chính nhìn thấy tương lai qua các mảnh ký ức vỡ.\n' +
+          '[STAT: 7 cảnh — Số mảnh ký ức mỗi lần “flash”]\n\n' +
+          'Cảnh 3:\n' +
+          'Cú máy: handheld, cận mặt, hơi thở gấp, ánh sáng lạnh.\n' +
+          '[STAT: 1 lựa chọn — Đổi tương lai]\n\n' +
+          'Cảnh 4:\n' +
+          'Cao trào: ký ức và hiện tại chồng lên nhau như 2 lớp phim.\n' +
+          '[STAT: 30 giây — Teaser đủ để pitch]\n\n' +
+          'Cảnh 5:\n' +
+          'CTA: Chọn ending: “Save them” hay “Save yourself”.\n',
+      },
+    };
+
+    const selected = scenarios[key];
+    setTopic(selected.topic);
+    setScript(selected.script);
+    setSources([]);
+    setSummary('');
+    setConfidence('high');
+    setWikiThumbnailUrl('');
+    setVerificationIssues([]);
+    setTargetDuration(DEFAULT_TARGET_DURATION);
+    setSceneReviewCards(normalizeSceneReviewCards(selected.script, selected.topic));
+    setSceneClipFiles({});
+    setWizardStep(3);
+    setError(null);
   };
 
   const handleResearchByTopic = async (specificTopic: string) => {
@@ -323,6 +399,11 @@ export function ResearchVideoView({ targetLang, setTargetLang, onOpenBrandLayout
       setError(t.researchVideo.needSceneReview);
       return;
     }
+    const selectedClips = sceneReviewCards.filter((scene) => Boolean(sceneClipFiles[scene.id])).length;
+    if (selectedClips > 0 && selectedClips !== sceneReviewCards.length) {
+      setError(t.researchVideo.needAllPixverseClips);
+      return;
+    }
     setIsRendering(true);
     setError(null);
     const formData = new FormData();
@@ -346,6 +427,12 @@ export function ResearchVideoView({ targetLang, setTargetLang, onOpenBrandLayout
     formData.append('studio_visual_mode', studioVisualMode);
     formData.append('studio_template', studioBrandStore.getState().studioTemplate);
     formData.append('studio_render_engine', studioRenderEngine);
+    if (selectedClips === sceneReviewCards.length) {
+      sceneReviewCards.forEach((scene) => {
+        const file = sceneClipFiles[scene.id];
+        if (file) formData.append('pixverse_clips', file, file.name);
+      });
+    }
     formData.append(
       'scene_review_json',
       JSON.stringify(
@@ -386,6 +473,7 @@ export function ResearchVideoView({ targetLang, setTargetLang, onOpenBrandLayout
       return;
     }
     setSceneReviewCards(normalizeSceneReviewCards(script, topic.trim()));
+    setSceneClipFiles({});
     setError(null);
     setWizardStep(3);
   };
@@ -434,6 +522,13 @@ export function ResearchVideoView({ targetLang, setTargetLang, onOpenBrandLayout
             }
           : scene,
       ),
+    );
+  };
+
+  const handleSceneClipSelect = (sceneId: string, file: File | null) => {
+    setSceneClipFiles((current) => ({ ...current, [sceneId]: file }));
+    setSceneReviewCards((current) =>
+      current.map((scene) => (scene.id === sceneId ? { ...scene, clipName: file?.name } : scene)),
     );
   };
 
@@ -521,6 +616,36 @@ export function ResearchVideoView({ targetLang, setTargetLang, onOpenBrandLayout
                 variant="outline"
                 size="sm"
                 className="h-7 text-[10px] border-amber-500/30 text-amber-300 hover:bg-amber-500/10"
+                onClick={() => loadDemoScenario('marketing')}
+                disabled={isResearching}
+              >
+                ⚡ {t.researchVideo.demoMarketing}
+              </Button>
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                className="h-7 text-[10px] border-amber-500/30 text-amber-300 hover:bg-amber-500/10"
+                onClick={() => loadDemoScenario('gaming')}
+                disabled={isResearching}
+              >
+                ⚡ {t.researchVideo.demoGaming}
+              </Button>
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                className="h-7 text-[10px] border-amber-500/30 text-amber-300 hover:bg-amber-500/10"
+                onClick={() => loadDemoScenario('film')}
+                disabled={isResearching}
+              >
+                ⚡ {t.researchVideo.demoFilm}
+              </Button>
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                className="h-7 text-[10px] border-white/10 text-slate-300 hover:bg-white/5"
                 onClick={handleHackathonDemo}
                 disabled={isResearching}
               >
@@ -698,6 +823,7 @@ export function ResearchVideoView({ targetLang, setTargetLang, onOpenBrandLayout
           onRegenerateScene={handleSceneRegenerate}
           onKeepScene={handleSceneKeep}
           onFallbackScene={handleSceneFallback}
+          onSceneClipSelect={handleSceneClipSelect}
         />
       </div>
 
